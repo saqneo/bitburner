@@ -43,7 +43,7 @@ export function executeContract(ns, contract_file, host) {
     let contract_data = ns.codingcontract.getData(contract_file, host)
     let reward = ns.codingcontract.attempt(contract_func(ns, contract_data), contract_file, host)
     if (reward) {
-      ns.tprint(`\u2705 Reward "${reward}" for completing ${contract_file} on ${host}.`)
+      ns.tprint(`\u2705 Reward '${reward}' for completing ${contract_file} on ${host}.`)
     } else {
       ns.tprint(`\u274C Failed contract ${contract_file} on ${host}.`)
       ns.tprint(`Description: ${ns.codingcontract.getDescription(contract_file, host)}\nContract Data: ${contract_data}`)
@@ -58,26 +58,26 @@ export function executeContract(ns, contract_file, host) {
 function getContractFunc(ns, contract_file, host) {
   let contract_type = ns.codingcontract.getContractType(contract_file, host)
   switch (contract_type) {
-    case "Encryption I: Caesar Cipher":
+    case 'Encryption I: Caesar Cipher':
       return caesar
-    case "Find Largest Prime Factor":
+    case 'Find Largest Prime Factor':
       return largestPrimeFactor
-    case "Generate IP Addresses":
+    case 'Generate IP Addresses':
       return generateIp
-    case "Spiralize Matrix":
+    case 'Spiralize Matrix':
       return spiralize
-    case "Subarray with Maximum Sum":
+    case 'Subarray with Maximum Sum':
       return subarrayMaxSum
-    case "Unique Paths in a Grid I":
-    case "Unique Paths in a Grid II":
+    case 'Unique Paths in a Grid I':
+    case 'Unique Paths in a Grid II':
       return uniquePaths
-    case "Total Ways to Sum":
+    case 'Total Ways to Sum':
       var contract_data = ns.codingcontract.getData(contract_file, host)
       if (contract_data > 60) {
         ns.tprint(`Rejecting TWTS ${contract_data}`)
         return null
       }
-    case "Total Ways to Sum II":
+    case 'Total Ways to Sum II':
       contract_data = ns.codingcontract.getData(contract_file, host)
       if (contract_data[0] > 60) {
         ns.tprint(`Rejecting TWTSII ${contract_data}`)
@@ -346,7 +346,7 @@ export function caesar(ns, data) {
     result.push(String.fromCharCode(code))
   }
 
-  result = result.join("")
+  result = result.join('')
   ns.tprint(`Found caesar of ${result} for ${data}`)
   return result
 }

@@ -7,7 +7,7 @@ export async function main(ns) {
 export function buyServer(ns) {
     let server_size = 2**10
     while (ns.getServerMoneyAvailable('home') > ns.getPurchasedServerCost(server_size)) {
-        if (ns.purchaseServer('q',server_size) == "") {
+        if (ns.purchaseServer('q',server_size) == '') {
             break
         }
     }

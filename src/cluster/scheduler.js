@@ -1,11 +1,11 @@
-import {Cluster} from 'cluster.js'
-import * as contract from "../lib/contract.js"
-import * as hacknet from "../buy/hacknet.js"
-import * as server from "../buy/server.js"
-import * as spread from "../hack/spread.js"
-import * as grow from "./grow.js"
-import * as hack from "./hack.js"
-import * as weaken from "./weaken.js"
+import {Cluster} from './cluster.js'
+import * as contract from '../lib/contract.js'
+import * as hacknet from '../buy/hacknet.js'
+import * as server from '../buy/server.js'
+import * as spread from '../hack/spread.js'
+import * as grow from './grow.js'
+import * as hack from './hack.js'
+import * as weaken from './weaken.js'
 /** @param {import('../..').NS} ns */
 export async function main(ns) {
     //let grow_cluster = new Cluster(ns, 0.6, 'shard_grow')
@@ -14,16 +14,16 @@ export async function main(ns) {
 
     // The scheduler will run grow, hack, and weaken with their permitted cluster resources.
     let tasks = [
-        {name: "spread", task: spread.spread, args: [], when: Date.now()},
-        {name: "contract", task: contract.findContracts, args: [], when: Date.now()},
-        {name: "buyServer", task: server.buyServer, args: [], when: Date.now()},
-        {name: "hacknet", task: hacknet.buyHacknet, args: [], when: Date.now()},
-        {name: "weaken", task: weaken.deploy, args: [weaken_cluster], when: Date.now()},
-        {name: "hack", task: hack.deploy, args: [hack_cluster], when: Date.now()},
-        //{name: "grow", task: grow.deploy, args: [grow_cluster], when: Date.now()},
+        {name: 'spread', task: spread.spread, args: [], when: Date.now()},
+        {name: 'contract', task: contract.findContracts, args: [], when: Date.now()},
+        {name: 'buyServer', task: server.buyServer, args: [], when: Date.now()},
+        {name: 'hacknet', task: hacknet.buyHacknet, args: [], when: Date.now()},
+        {name: 'weaken', task: weaken.deploy, args: [weaken_cluster], when: Date.now()},
+        {name: 'hack', task: hack.deploy, args: [hack_cluster], when: Date.now()},
+        //{name: 'grow', task: grow.deploy, args: [grow_cluster], when: Date.now()},
     ]
 
-    tasks.push({name: "print", task: printTasksPeriodic, args: [tasks], when: Date.now()})
+    tasks.push({name: 'print', task: printTasksPeriodic, args: [tasks], when: Date.now()})
     while (true) {
         let now = Date.now()
 

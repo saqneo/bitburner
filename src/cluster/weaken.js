@@ -1,6 +1,6 @@
-import {Cluster} from "cluster.js"
-import * as map from "../lib/map.js"
-import * as grow from "./grow.js"
+import {Cluster} from './cluster.js'
+import * as map from '../lib/map.js'
+import * as grow from './grow.js'
 
 /** @param {import('../..').NS} ns */
 export async function main(ns) {

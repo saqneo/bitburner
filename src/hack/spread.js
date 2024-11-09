@@ -34,7 +34,7 @@ export function spread(ns) {
             o(a)
             })
         } else {
-            ns.tprint(a + " requirement not met: getServerNumPortsRequired()=" + ports_required)
+            ns.tprint(a + ' requirement not met: getServerNumPortsRequired()=' + ports_required)
             return
         }
 

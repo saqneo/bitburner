@@ -27,10 +27,10 @@ export async function main(ns) {
     {name: 'largestPrimeFactor.25', func: libcontract.largestPrimeFactor, data: 25, solution: 5},
     {name: 'largestPrimeFactor.503', func: libcontract.largestPrimeFactor, data: 503, solution: 503},
     {name: 'largestPrimeFactor.570292007', func: libcontract.largestPrimeFactor, data: 570292007, solution: 8511821 },
-    {name: 'generateIp.1', func: libcontract.generateIp, data: "25525511135", solution: ["255.255.11.135", "255.255.111.35"]},
-    {name: 'generateIp.2', func: libcontract.generateIp, data: "1938718066", solution: ["193.87.180.66"]},
-    {name: 'caesar.1', func: libcontract.caesar, data: ["BANANAS", 3], solution: "YXKXKXP"},
-    {name: 'caesar.2', func: libcontract.caesar, data: ["INBOX FLASH VIRUS SHIFT POPUP", 3], solution: "FKYLU CIXPE SFORP PEFCQ MLMRM"},
+    {name: 'generateIp.1', func: libcontract.generateIp, data: '25525511135', solution: ['255.255.11.135', '255.255.111.35']},
+    {name: 'generateIp.2', func: libcontract.generateIp, data: '1938718066', solution: ['193.87.180.66']},
+    {name: 'caesar.1', func: libcontract.caesar, data: ['BANANAS', 3], solution: 'YXKXKXP'},
+    {name: 'caesar.2', func: libcontract.caesar, data: ['INBOX FLASH VIRUS SHIFT POPUP', 3], solution: 'FKYLU CIXPE SFORP PEFCQ MLMRM'},
     {name: 'spiralize.2', func: libcontract.spiralize, data: [[1, 2, 3, 4], [5, 6, 7, 8], [9, 10, 11, 12]], solution: [1, 2, 3, 4, 8, 12, 11, 10, 9, 5, 6, 7]}
   ]
   tests.forEach((test) => { runTest(ns, test) })
