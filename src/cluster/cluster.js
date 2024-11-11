@@ -14,6 +14,16 @@ export function getClusterMaxRam(ns) {
     return max_ram
 }
 
+/** @param {import('../..').NS ns} */
+function getPurchasedServerRam(ns) {
+    let total_ram = 0
+    ns.getPurchasedServers().forEach((host) => {
+        total_ram += ns.getServer(host).maxRam
+    })
+    return total_ram
+}
+
+/** @param {import('../..').NS ns} */
 function getClusterUsedRam(ns) {
     let used_ram = 0
     getClusterHosts(ns).forEach((host) => {
@@ -27,17 +37,22 @@ function getClusterHosts(ns) {
     let hosts = map.getAllNodes(ns)
     let cluster_nodes = []
     hosts.forEach((host) => {
+        // Don't include 'home' in the cluster if forumlas are unlocked and we have enough ram to sustain the cluster via purchased servers.
+        if ((host == 'home' || ns.getServer(host).purchasedByPlayer) && ns.fileExists('Formulas.exe')) {
+            return
+        }
+
         if (ns.hasRootAccess(host)) {
             cluster_nodes.push(host)
         }
     })
+
     return cluster_nodes
 }
 
 export class Cluster {
     constructor(ns, usage_fraction, name) {
         this.usage_fraction = usage_fraction
-        this.max_ram = getClusterMaxRam(ns)
         this.usage = []
         this.used = 0
         this.name = 'unnamed_cluster'
@@ -53,6 +68,28 @@ export class Cluster {
                 this.used -= this.usage[i].ram
                 this.usage.splice(i, 1)
             }
+        }
+    }
+
+    /** @param {import('../..').NS ns} */
+    share(ns) { 
+        let script = 'hack/share.js'
+        const script_ram = ns.getScriptRam('hack/share.js');
+
+        // TODO: This is currently shared across the whole cluster and therefore needs to be used by the scheduler instead of a shard owner.
+        let total_threads = 0
+        ns.getPurchasedServers().forEach((host) => {
+            let available_ram = ns.getServerMaxRam(host) - ns.getServerUsedRam(host)
+            let threads = Math.floor(available_ram/script_ram)
+            if (threads) {
+                total_threads += threads
+                ns.scp(script, host)
+                ns.exec(script, host, threads)
+            }
+        })
+
+        if (total_threads > 0) {
+            ns.tprint(`Sharing cluster on ${total_threads} threads.`)
         }
     }
 
@@ -77,7 +114,7 @@ export class Cluster {
         let threads_deployed = 0;
 
         const script_ram = ns.getScriptRam(script);
-        let threads_allowed = Math.min(Math.floor((this.usage_fraction * this.max_ram - this.used) / script_ram), adjusted_threads_desired)
+        let threads_allowed = Math.min(Math.floor((this.usage_fraction * getClusterMaxRam(ns) - this.used) / script_ram), adjusted_threads_desired)
 
         if (script_ram === 0) {
             ns.tprint(`ERROR: Script ${script} not found or doesn't use RAM.`);

@@ -1,7 +1,7 @@
 import {Cluster} from './cluster.js'
 import * as map from '../lib/map.js'
 import * as grow from './grow.js'
-
+import * as hwgw from '../hack/hwgw.js'
 /** @param {import('../..').NS} ns */
 export async function main(ns) {
     let cluster = new Cluster(ns, 0.9)
@@ -21,7 +21,12 @@ export function deploy(ns, cluster) {
     // Sort hosts by how much expected money would be generated per thread-second, descending.
     let values = []
     let hosts = map.getHackNodes(ns);
+    let forbidden = hwgw.getHackNodesByValue(ns).slice(0, ns.getPurchasedServers().length + 1)
     hosts.forEach((host) => {
+        if (forbidden.some(e => host == e)) {
+            return
+        }
+
         let money_available = ns.getServerMoneyAvailable(host)
 
         // Only include servers where hacking doesn't deplete.
@@ -41,7 +46,7 @@ export function deploy(ns, cluster) {
         let deployed = cluster.deploy(ns, i.threads, script, i.host)
 
         if (deployed.total_deployed == 0) {
-            break
+            continue
         }
 
         total_deployed += deployed.total_deployed

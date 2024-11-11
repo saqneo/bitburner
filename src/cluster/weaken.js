@@ -1,6 +1,6 @@
 import {Cluster} from './cluster.js'
 import * as map from '../lib/map.js'
-import * as grow from './grow.js'
+import * as hwgw from '../hack/hwgw.js'
 
 /** @param {import('../..').NS} ns */
 export async function main(ns) {
@@ -21,7 +21,11 @@ export function deploy(ns, cluster) {
     const WEAKEN_MULTIPLIER = 1.1
     let values = []
     let hosts = map.getHackNodes(ns);
+    let forbidden = hwgw.getHackNodesByValue(ns).slice(0, ns.getPurchasedServers().length + 1)
     hosts.forEach((host) => {
+        if (forbidden.some(e => host == e)) {
+            return
+        }
         pushIfValuable(ns, host, values)
     })
     values.sort((a, b) => b.value - a.value)
@@ -38,13 +42,11 @@ function deployCommon(ns, cluster, values, script, when = Date.now()) {
     let times = []
     let total_deployed = 0
     let total_hosts = []
-    let leftover = true
     for (const i of values) {
         let deployed = cluster.deploy(ns, i.threads, script, i.host)
 
         if (deployed.total_deployed == 0) {
-            leftover = false
-            break
+            continue
         }
 
         total_deployed += deployed.total_deployed
@@ -52,7 +54,6 @@ function deployCommon(ns, cluster, values, script, when = Date.now()) {
 
         if (deployed.total_deployed != i.threads) {
             // Didn't deploy everything, terminate early.
-            leftover = false
             break
         }
 
@@ -68,16 +69,10 @@ function deployCommon(ns, cluster, values, script, when = Date.now()) {
     }
 
     return times
-
-    // if (leftover) {
-    //     // Try to land another set right after.
-    //     return times.concat(deployCommon(ns, cluster, values, script, when + 5000))
-    // }
 }
 
 /** @param {import('../..').NS} ns */
 export function getWeakenParameters(ns, host) {
-    let money_available = ns.getServerMoneyAvailable(host)
     let threads = (ns.getServerSecurityLevel(host) - ns.getServerMinSecurityLevel(host)) / ns.weakenAnalyze(1)
     let weaken_time = ns.getWeakenTime(host)
     return {host: host, threads: Math.ceil(threads), time: weaken_time, value: 1/weaken_time}
@@ -85,8 +80,6 @@ export function getWeakenParameters(ns, host) {
 
 /** @param {import('../..').NS} ns */
 function pushIfValuable(ns, host, values) {
-    let money_available = ns.getServerMoneyAvailable(host)
-
     if (ns.getServerSecurityLevel(host) > ns.getServerMinSecurityLevel(host)) {
         values.push(getWeakenParameters(ns, host))
     }
