@@ -6,7 +6,7 @@ export async function main(ns) {
 /** @param {import('../..').NS} ns */
 export function buyServer(ns) {
     let server_size = 2**10
-    while (ns.getServerMoneyAvailable('home') > ns.getPurchasedServerCost(server_size)) {
+    while (ns.getServerMoneyAvailable('home') > ns.getPurchasedServerCost(server_size) * 2) {
         if (ns.purchaseServer('q',server_size) == '') {
             break
         }

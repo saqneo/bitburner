@@ -6,7 +6,7 @@ export async function main(ns) {
 /** @param {import('../..').NS} ns */
 export function buyHacknet(ns) {
   let num_nodes = ns.hacknet.numNodes()
-  const MAX_COST_FRACTION = 0.1 / num_nodes
+  const MAX_COST_FRACTION = 0.02 / num_nodes
   for (let n = 0; n < num_nodes; n++) {
     while (ns.getServerMoneyAvailable('home') > ns.hacknet.getLevelUpgradeCost(n) / MAX_COST_FRACTION) {
       if (!ns.hacknet.upgradeLevel(n)) {
