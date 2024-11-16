@@ -1,4 +1,5 @@
 import * as map from '../lib/map.js'
+import * as formulas from '../lib/formulas.js'
 
 /** @param {import('../..').NS ns} */
 export async function main(ns) {
@@ -38,7 +39,7 @@ function getClusterHosts(ns) {
     let cluster_nodes = []
     hosts.forEach((host) => {
         // Don't include 'home' in the cluster if forumlas are unlocked and we have enough ram to sustain the cluster via purchased servers.
-        if ((host == 'home' || ns.getServer(host).purchasedByPlayer) && ns.fileExists('Formulas.exe')) {
+        if ((host == 'home' || ns.getServer(host).purchasedByPlayer) && formulas.shouldUseFormulas(ns)) {
             return
         }
 

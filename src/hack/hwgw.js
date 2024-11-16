@@ -1,6 +1,5 @@
 import * as map from '../lib/map.js'
-import * as args from '../lib/args.js'
-
+import * as formulas from '../lib/formulas.js'
 /** @param {import('../..').NS} ns */
 export async function main(ns) {
     new HwgwServer(ns, 'home', 0).deploy(ns)
@@ -16,7 +15,7 @@ export class HwgwServer {
 
     /** @param {import('../..').NS} ns */
     deploy(ns) {
-        if (!ns.fileExists('Formulas.exe')) {
+        if (!formulas.shouldUseFormulas(ns)) {
             return
         }
 
@@ -36,6 +35,7 @@ export class HwgwServer {
             max_time = Math.max(max_time, getCycleTime(ns, host).total_time)
         })
 
+    
         let incremental_delay = 50
         let base_delay = 0
         for (let j = 0; j < top_n; j++) {
@@ -44,14 +44,16 @@ export class HwgwServer {
             }
 
             //  target = sorted_values[j]
+            console.log(target)
+            console.log(ns.getServer(target).hackDifficulty)
             let cost = this.getCycleCost(ns, target)
             let time = getCycleTime(ns, target)
             let threads = getCycleThreads(ns, target)
-            let i = 0
             let initializing = false
-            // Up to 10 loops or 10x the number of instances which can fit in one cycle (accounting for others max time)
-            while (!(cost > (ns.getServerMaxRam(this.host) - ns.getServerUsedRam(this.host)))) {
-                i++
+
+            let available_ram = ns.getServerMaxRam(this.host) - ns.getServerUsedRam(this.host)
+            let i = 0
+            for (; i < available_ram / cost && i < 100; i++) {
                 let server = ns.getServer(target)
                 let hack_delay = base_delay
                 // If weaken_time will be within 200ms of hack_time, wait.
@@ -61,25 +63,30 @@ export class HwgwServer {
                 // If weaken_time will be within 200ms of the previous period, wait. This will always be true.
                 let gweaken_delay = Math.max(Math.max(Math.max(time.hack_time, time.weaken_time), time.grow_time) - time.weaken_time + 3*incremental_delay, 0) + base_delay
                 // Don't hack unless the server is grown to max.
+                console.log(server.hackDifficulty)
+                console.log(server.minDifficulty)
+                console.log(threads.hack_threads)
+                console.log(threads.hweak_threads)
+                console.log(threads.grow_threads)
+                console.log(threads.gweak_threads)
                 if (server.moneyAvailable > server.moneyMax * .95 && server.hackDifficulty < server.minDifficulty * 1.1) {
                     ns.exec('hack/hack.js', this.host, threads.hack_threads, target, hack_delay)
                 } else {
                     initializing = true
                 }
-
                 ns.exec('hack/weaken.js', this.host, threads.hweak_threads, target, hweaken_delay)
                 ns.exec('hack/grow.js', this.host, threads.grow_threads, target, grow_delay)
                 ns.exec('hack/weaken.js', this.host, threads.gweak_threads, target, gweaken_delay)
+                base_delay += 4*incremental_delay
                 if (initializing) {
                     if (i > 100) {
                         break
                     }
                 }
-                base_delay += 4*incremental_delay
             }
 
             if (i > 0) {
-                ns.tprint(`HWGW: Using ${this.host} to ${initializing ? 'initialize' : 'attack'} ${target} ${i} times in ${Math.floor(time.total_time/1000)}s.`)
+                ns.tprint(`HWGW: Using ${this.host} to ${initializing ? 'initialize' : 'attack'} ${target} ${i} times in ${Math.floor((max_time + base_delay)/1000)}s.`)
             }
         }
 
@@ -95,10 +102,9 @@ export class HwgwServer {
 
 /** @param {import('../..').NS} ns */
 export function getHackNodesByValue(ns) {
-    if (!ns.fileExists('Formulas.exe')) {
+    if (!formulas.shouldUseFormulas(ns)) {
         return []
     }
-
     let result = map.getHackNodes(ns).map((host) => {
         return { host: host, value: getCycleValue(ns, host) }
     }).sort((a, b) => b.value - a.value).map((a) => a.host)
@@ -120,7 +126,7 @@ function getCycleValue(ns, host) {
 function getCycleThreads(ns, host, cores) {
     let player = ns.getPlayer()
     let server = ns.getServer(host)
-    let HACK_AMOUNT = 0.1
+    let HACK_AMOUNT = 0.4
     server.moneyAvailable = server.moneyMax * (1 - HACK_AMOUNT)
     server.hackDifficulty = server.minDifficulty
     let grow_threads = ns.formulas.hacking.growThreads(server, player, server.moneyMax, cores) // Overgrow.
