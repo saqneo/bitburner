@@ -33,6 +33,9 @@ s handle.
         2.  **Persist:** Write the *next* stage name to `/data/state.txt`.
         3.  **Handover:** Execute `ns.spawn('/daemon.js')` to reboot into the next stage.
 
+## Timing & Waits
+*   **Tick Rate:** For short, polling-style waits (e.g., waiting for a process to start or die), use the `TICK_RATE_MS` constant from `/lib/constants.js`. This is set to 100ms to provide a safe margin over the game's script execution overhead.
+
 ## Directory Structure
 *   src/: Source code root (synced to game).
 *   src/lib/: Shared library functions.
