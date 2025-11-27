@@ -13,6 +13,6 @@
       "update": "true",
       "location": "index.d.ts"
     },
-    "exclude": [".vscode", ".idea", ".github", "node_modules", "file_sync.json", ".git", "bitburner-src" ],
+    "exclude": [".vscode", ".idea", ".github", "node_modules", "file_sync.json", ".git", "bitburner-src", ".old" ],
     "pushAllOnConnection": true
   }

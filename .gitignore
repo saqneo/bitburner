@@ -1,0 +1,22 @@
+# Node
+node_modules/
+npm-debug.log
+yarn-error.log
+package-lock.json
+
+# Bitburner
+bitburner-filesync.json
+
+# Editors
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# AI & Context
+.gemini/
+GEMINI.md
+
+gha-creds-*.json
