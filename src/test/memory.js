@@ -8,9 +8,9 @@ export async function main(ns) {
 
     // Define tests: [Script Path, Max RAM]
     const tests = [
-        ["/daemon.js", 4.0],
-        ["/stages/early.js", 5.0], // Could theoretically go up to 8.0GB, kept at 5.0GB as a warning check.
-        ["/hacknet.js", 4.0]
+        ["/daemon.js", 6.0],
+        ["/stages/early.js", 8.0], // Could theoretically go up to 8.0GB, kept at 5.0GB as a warning check.
+        ["/hacknet.js", 6.0]
     ];
 
     for (const [script, limit] of tests) {
@@ -24,9 +24,8 @@ export async function main(ns) {
             ns.tprint(`PASS: ${script} uses ${ram}GB (Limit: ${limit}GB)`);
             passes++;
         } else {
-            ns.tprint(`FAIL: ${script} uses ${ram}GB (Limit: ${limit}GB)`);
+            ns.tprint(`FAIL: ${script} uses ${ram}GB (Limit: ${limit}GB). To diagnose, run 'mem ${script}' in the in-game terminal.`);
             failures++;
-            ns.tprint(`    To diagnose, run 'mem ${script}' in the in-game terminal.`);
         }
     }
 

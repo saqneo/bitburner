@@ -8,12 +8,6 @@ export async function main(ns) {
     ns.disableLog("ALL");
     ns.print("Stage: EARLY GAME started.");
 
-    // Launch Hacknet Manager (Absolute path)
-    if (!ns.isRunning("/hacknet.js", "home")) {
-        ns.exec("/hacknet.js", "home");
-        ns.print("Launched /hacknet.js");
-    }
-
     const SCRIPT_NAME = "hack/early-hack.js";
     const TARGET = "n00dles";
 
@@ -55,9 +49,6 @@ export async function main(ns) {
                 }
 
                 const pid = ns.exec(SCRIPT_NAME, host, threads, TARGET);
-                if (pid !== 0) {
-                    // ns.print(`Deployed ${SCRIPT_NAME} on ${host} with ${threads} threads.`);
-                }
             }
         }
 
@@ -65,14 +56,11 @@ export async function main(ns) {
         const nextStage = checkTransition(ns, "early");
         if (nextStage) {
             ns.tprint(`SUCCESS: Early Game Goals Met. Transitioning to '${nextStage}'.`);
-
-            // 1. Cleanup: Kill all workers (keep hacknet running)
-            killAll(ns, ["/hacknet.js"]);
-
-            // 2. Persist State
+            
+            // 1. Cleanup: Kill all workers
+            killAll(ns);
+            
             ns.write("/data/state.txt", nextStage, "w");
-
-            // 3. Spawn Daemon to load next stage
             ns.spawn("/daemon.js");
         }
 

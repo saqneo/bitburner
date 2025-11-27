@@ -16,13 +16,22 @@ export async function main(ns) {
 
     const script = `/stages/${state}.js`;
     
+    // Service Launching (if RAM permits)
+    // Hacknet Manager (Service) - Requires ~4GB
+    // Only run if we have > 12GB RAM (e.g., 16GB+) to ensure we don't starve the stage script.
+    if (ns.getServerMaxRam("home") > 12 && ns.fileExists("/hacknet.js") && !ns.isRunning("/hacknet.js", "home")) {
+        ns.print("Daemon: Launching Hacknet Manager (Service)...");
+        ns.exec("/hacknet.js", "home");
+    }
+
+    // Spawn the Stage
     if (ns.fileExists(script)) {
         ns.tprint(`Daemon: Spawning stage '${state}' (${script})...`);
-        ns.spawn(script); // Use spawn as daemon exits immediately
+        ns.spawn(script);
     } else {
         ns.tprint(`Daemon ERROR: Stage script '${script}' not found! Defaulting to 'early'.`);
         if (state !== 'early' && ns.fileExists('/stages/early.js')) {
-             ns.spawn('/stages/early.js'); // Fallback also uses spawn
+             ns.spawn('/stages/early.js');
         }
     }
 }
