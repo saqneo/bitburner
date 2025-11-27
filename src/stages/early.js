@@ -1,8 +1,7 @@
-import { spread } from '/hack/spread.js';
-import { getAllNodes } from '/lib/map.js';
+import { getAllNodes, getUnownedNodes } from '/lib/map.js';
 import { killAll } from '/lib/process.js';
 import { checkTransition } from '/lib/progression.js';
-import { smartScp, smartExec, deployLibs } from '/lib/deploy.js';
+import { smartExec, deployLibs } from '/lib/deploy.js';
 import { TICK_RATE_MS } from '/lib/constants.js';
 
 /** @param {NS} ns */
@@ -15,10 +14,9 @@ export async function main(ns) {
     while (true) {
         // 1. Spread & Deploy
         spread(ns);
-        const hosts = getAllNodes(ns);
-        await smartScp(ns, SCRIPT_NAME, hosts);
-        await deployLibs(ns, hosts); // Deploy all libs and utils
-        smartExec(ns, SCRIPT_NAME, hosts);
+        const allHosts = getAllNodes(ns); // Used for deploying libs and utils to ALL rooted hosts
+        await deployLibs(ns, allHosts); // Deploy all libs and utils
+        await delegateHackScript(ns, SCRIPT_NAME); // Delegate hack script deployment and execution
 
         // --- 2. Infrastructure Management ---
         await delegateServerPurchasesAndUpgrades(ns, SCRIPT_NAME);
@@ -35,6 +33,16 @@ export async function main(ns) {
 
         await ns.sleep(5000);
     }
+}
+
+/**
+ * Delegates the deployment and execution of the main hacking script to unowned hosts.
+ * @param {NS} ns
+ * @param {string} SCRIPT_NAME - The name of the main hacking script (e.g., "hack/early-hack.js").
+ */
+async function delegateHackScript(ns, SCRIPT_NAME) {
+    const targetHosts = getUnownedNodes(ns);
+    smartExec(ns, SCRIPT_NAME, targetHosts);
 }
 
 /**
@@ -73,17 +81,18 @@ async function delegateTask(ns, SCRIPT_NAME, taskScriptName) {
 
     const potentialHosts = getAllNodes(ns)
         .filter(h => h !== 'home' && ns.hasRootAccess(h) && ns.getServerMaxRam(h) >= 16)
-        .sort((a,b) => ns.getServerMaxRam(b) - ns.getServerMaxRam(a));
+        .sort((a,b) => ns.getServerMaxRam(b));
 
     let taskHost = null;
     for (const host of potentialHosts) {
-        if ((ns.getServerMaxRam(host) - ns.getServerUsedRam(host)) >= ramForTask) {
+        if (ns.getServerMaxRam(host) >= ramForTask) {
             taskHost = host;
             break;
         }
     }
 
     if (taskHost) {
+        ns.tprint(`Delegated task '${taskScriptName}' to '${taskHost}'`)
         let scriptPid = -1;
         const procs = ns.ps(taskHost);
         for (const proc of procs) {

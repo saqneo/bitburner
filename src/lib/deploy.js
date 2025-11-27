@@ -4,20 +4,6 @@
 import { getAllNodes } from '/lib/map.js';
 
 /**
- * Copies a script to a list of hosts, automatically filtering out 'home'.
- * @param {NS} ns
- * @param {string} scriptName - The name of the script to copy.
- * @param {string[]} hosts - An array of hostnames to copy the script to.
- * @returns {Promise<void>} A promise that resolves when all scp operations are complete.
- */
-export async function smartScp(ns, scriptName, hosts) {
-    const remoteHosts = hosts.filter(h => h !== "home");
-    if (remoteHosts.length > 0) {
-        await Promise.all(remoteHosts.map(host => ns.scp(scriptName, host)));
-    }
-}
-
-/**
  * Executes a script on all available rooted hosts (excluding 'home')
  * with the maximum possible threads. Assumes the script has already been copied.
  *
@@ -70,7 +56,8 @@ export async function deployLibs(ns, hosts) {
 
     const libFiles = ns.ls("home", "/lib/").filter(f => f.endsWith('.js'));
     const utilFiles = ns.ls("home", "/util/").filter(f => f.endsWith('.js'));
-    const allLibs = [...libFiles, ...utilFiles];
+    const hackFiles = ns.ls("home", "/hack/").filter(f => f.endsWith('.js'));
+    const allLibs = [...libFiles, ...utilFiles, ...hackFiles];
 
     for (const host of remoteHosts) {
         await ns.scp(allLibs, host, "home");

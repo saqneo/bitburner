@@ -18,3 +18,10 @@ export function getAllNodes(ns) {
 
     return [...visited]
 }
+
+/** @param {NS} ns */
+export function getUnownedNodes(ns) {
+    const allNodes = getAllNodes(ns);
+    const purchasedServers = ns.getPurchasedServers();
+    return allNodes.filter(node => node !== 'home' && !purchasedServers.includes(node));
+}
