@@ -1,74 +1,68 @@
-/** @param {NS} ns */
-export async function upgradeHacknet(ns) {
-    // Maximum percentage of current money to spend on a single upgrade/node
-    const currentMoney = ns.getServerMoneyAvailable("home");
+/**
+ * Library functions for managing the hacknet array.
+ * This version avoids using the ns.formulas API to keep RAM costs low.
+ */
+
+/**
+ * Finds the single most cost-effective hacknet upgrade and performs it.
+ * This includes purchasing new nodes or upgrading existing ones (level, RAM, cores).
+ * @param {import('../..').NS} ns 
+ * @returns {boolean} - True if an action was taken, false otherwise.
+ */
+export function manageHacknet(ns) {
+    const money = ns.getServerMoneyAvailable("home");
+    const budget = money * 0.25; // Use 25% of available money for hacknet
+
+    let bestUpgrade = { type: 'none', node: -1, cost: Infinity };
+
+    // --- 1. Evaluate purchasing a new node ---
+    const purchaseCost = ns.hacknet.getPurchaseNodeCost();
+    if (purchaseCost < bestUpgrade.cost && purchaseCost <= budget) {
+        bestUpgrade = { type: 'purchase', cost: purchaseCost };
+    }
+
+    // --- 2. Evaluate upgrading existing nodes ---
     const numNodes = ns.hacknet.numNodes();
-    
-    // Budget scales down as more nodes are acquired.
-    const DYNAMIC_BUDGET_FACTOR = 0.2 / Math.max(1, numNodes); 
-    const budget = currentMoney * DYNAMIC_BUDGET_FACTOR; 
-
-    let cheapest = {
-        cost: Infinity,
-        type: null, // 'node', 'level', 'ram', 'core'
-        index: -1
-    };
-
-    // 1. Check cost of a new node
-    const nodeCost = ns.hacknet.getPurchaseNodeCost();
-    if (nodeCost < cheapest.cost) {
-        cheapest.cost = nodeCost;
-        cheapest.type = 'node';
-    }
-
-    // 2. Check upgrades for all existing nodes
     for (let i = 0; i < numNodes; i++) {
+        // Upgrade Level
         const levelCost = ns.hacknet.getLevelUpgradeCost(i, 1);
+        if (levelCost < bestUpgrade.cost && levelCost <= budget) {
+            bestUpgrade = { type: 'level', node: i, cost: levelCost };
+        }
+
+        // Upgrade RAM
         const ramCost = ns.hacknet.getRamUpgradeCost(i, 1);
+        if (ramCost < bestUpgrade.cost && ramCost <= budget) {
+            bestUpgrade = { type: 'ram', node: i, cost: ramCost };
+        }
+
+        // Upgrade Cores
         const coreCost = ns.hacknet.getCoreUpgradeCost(i, 1);
-
-        if (levelCost < cheapest.cost) {
-            cheapest.cost = levelCost;
-            cheapest.type = 'level';
-            cheapest.index = i;
-        }
-        if (ramCost < cheapest.cost) {
-            cheapest.cost = ramCost;
-            cheapest.type = 'ram';
-            cheapest.index = i;
-        }
-        if (coreCost < cheapest.cost) {
-            cheapest.cost = coreCost;
-            cheapest.type = 'core';
-            cheapest.index = i;
+        if (coreCost < bestUpgrade.cost && coreCost <= budget) {
+            bestUpgrade = { type: 'core', node: i, cost: coreCost };
         }
     }
 
-    // 3. Execute if affordable and within budget
-    if (cheapest.type && cheapest.cost <= budget) {
-        switch (cheapest.type) {
-            case 'node':
-                if (ns.hacknet.purchaseNode() !== -1) {
-                    ns.print(`Purchased new Hacknet Node for ${ns.formatNumber(cheapest.cost)}`);
-                }
-                break;
-            case 'level':
-                if (ns.hacknet.upgradeLevel(cheapest.index, 1)) {
-                    ns.print(`Upgraded Node ${cheapest.index} Level for ${ns.formatNumber(cheapest.cost)}`);
-                }
-                break;
-            case 'ram':
-                if (ns.hacknet.upgradeRam(cheapest.index, 1)) {
-                    ns.print(`Upgraded Node ${cheapest.index} RAM for ${ns.formatNumber(cheapest.cost)}`);
-                }
-                break;
-            case 'core':
-                if (ns.hacknet.upgradeCore(cheapest.index, 1)) {
-                    ns.print(`Upgraded Node ${cheapest.index} Core for ${ns.formatNumber(cheapest.cost)}`);
-                }
-                break;
-        }
-        return true; // Bought something
+    // --- 3. Perform the best action found ---
+    switch (bestUpgrade.type) {
+        case 'purchase':
+            ns.hacknet.purchaseNode();
+            ns.print(`SUCCESS: Purchased new hacknet node.`);
+            return true;
+        case 'level':
+            ns.hacknet.upgradeLevel(bestUpgrade.node, 1);
+            ns.print(`SUCCESS: Upgraded hacknet node ${bestUpgrade.node} level.`);
+            return true;
+        case 'ram':
+            ns.hacknet.upgradeRam(bestUpgrade.node, 1);
+            ns.print(`SUCCESS: Upgraded hacknet node ${bestUpgrade.node} RAM.`);
+            return true;
+        case 'core':
+            ns.hacknet.upgradeCore(bestUpgrade.node, 1);
+            ns.print(`SUCCESS: Upgraded hacknet node ${bestUpgrade.node} cores.`);
+            return true;
+        case 'none':
+        default:
+            return false;
     }
-    return false; // Nothing bought
 }

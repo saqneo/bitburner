@@ -2,7 +2,7 @@ import { spread } from '/hack/spread.js';
 import { getAllNodes } from '/lib/map.js';
 import { killAll } from '/lib/process.js';
 import { checkTransition } from '/lib/progression.js';
-import { smartScp, smartExec } from '/lib/deploy.js';
+import { smartScp, smartExec, deployLibs } from '/lib/deploy.js';
 import { TICK_RATE_MS } from '/lib/constants.js';
 
 /** @param {NS} ns */
@@ -10,34 +10,25 @@ export async function main(ns) {
     ns.disableLog("ALL");
     ns.print("Stage: EARLY GAME started.");
 
-    // HACKING_PROGRAMS array and purchasing loop removed due to RAM concerns.
-    // Programs will need to be purchased manually for now.
-    // const HACKING_PROGRAMS = [...];
-    // for (const program of HACKING_PROGRAMS) { ... }
-
-    const SCRIPT_NAME = "hack/early-hack.js"; // SCRIPT_NAME is still used here
+    const SCRIPT_NAME = "hack/early-hack.js";
 
     while (true) {
-        // 1. Spread: Gain root access where possible
+        // 1. Spread & Deploy
         spread(ns);
-
-        // 2. Deploy: Copy the script to all remote hosts
-        const hosts = getAllNodes(ns); // Needs to get the full list to pass to smartScp and smartExec
+        const hosts = getAllNodes(ns);
         await smartScp(ns, SCRIPT_NAME, hosts);
-
-        // 3. Deploy: Execute the script on all remote hosts
+        await deployLibs(ns, hosts); // Deploy all libs and utils
         smartExec(ns, SCRIPT_NAME, hosts);
 
-        // --- 4. Server Purchase Logic ---
+        // --- 2. Infrastructure Management ---
         await delegateServerPurchasesAndUpgrades(ns, SCRIPT_NAME);
+        await delegateHacknetUpgrades(ns, SCRIPT_NAME);
         
-        // --- State Transition Check ---
+        // --- 3. State Transition Check ---
         const nextStage = checkTransition(ns, "early");
         if (nextStage) {
             ns.tprint(`SUCCESS: Early Game Goals Met. Transitioning to '${nextStage}'.`);
-            
             killAll(ns);
-            
             ns.write("/data/state.txt", nextStage, "w");
             ns.spawn("/daemon.js");
         }
@@ -47,56 +38,72 @@ export async function main(ns) {
 }
 
 /**
- * Finds a suitable remote host to run the server purchasing script,
- * kills the primary hacking script on it to free RAM, executes the purchase
- * script, and waits for it to finish. This is done to offload the RAM cost
- * from the home server.
+ * Delegates server purchasing to a remote host.
  * @param {NS} ns
- * @param {string} SCRIPT_NAME - The name of the main hacking script (e.g., "hack/early-hack.js").
+ * @param {string} SCRIPT_NAME - The script to kill to make RAM available.
  */
 async function delegateServerPurchasesAndUpgrades(ns, SCRIPT_NAME) {
-    const purchaseScriptName = '/util/purchase-server.js';
-    const libServers = '/lib/servers.js';
-    const ramForPurchase = ns.getScriptRam(purchaseScriptName) + ns.getScriptRam(libServers);
+    const taskScriptName = '/util/purchase-server.js';
+    await delegateTask(ns, SCRIPT_NAME, taskScriptName);
+}
 
-    // Find a host with at least 16GB total RAM and enough free RAM to run the script
+/**
+ * Delegates hacknet upgrades to a remote host.
+ * @param {NS} ns
+ * @param {string} SCRIPT_NAME - The script to kill to make RAM available.
+ */
+async function delegateHacknetUpgrades(ns, SCRIPT_NAME) {
+    const taskScriptName = '/util/upgrade-hacknet.js';
+    await delegateTask(ns, SCRIPT_NAME, taskScriptName);
+}
+
+/**
+ * A generic function to delegate a task to a remote host to save RAM on home.
+ * Assumes the script and its dependencies are already on the target host.
+ * @param {NS} ns
+ * @param {string} SCRIPT_NAME - The script to kill on the remote host for RAM.
+ * @param {string} taskScriptName - The script to execute on the remote host.
+ */
+async function delegateTask(ns, SCRIPT_NAME, taskScriptName) {
+    // Ram cost of the task script itself, plus its direct dependencies
+    // Note: this is a simplification. We assume dependencies are in /lib/
+    const ramForTask = ns.getScriptRam(taskScriptName) 
+                     + ns.getScriptRam(taskScriptName.replace('/util/', '/lib/'));
+
+
     const potentialHosts = getAllNodes(ns)
         .filter(h => h !== 'home' && ns.hasRootAccess(h) && ns.getServerMaxRam(h) >= 16)
         .sort((a,b) => ns.getServerMaxRam(b) - ns.getServerMaxRam(a));
 
-    let purchaseHost = null;
+    let taskHost = null;
     for (const host of potentialHosts) {
-        if ((ns.getServerMaxRam(host) - ns.getServerUsedRam(host)) >= ramForPurchase) {
-            purchaseHost = host;
+        if ((ns.getServerMaxRam(host) - ns.getServerUsedRam(host)) >= ramForTask) {
+            taskHost = host;
             break;
         }
     }
 
-    if (purchaseHost) {
-        await ns.scp([purchaseScriptName, libServers], purchaseHost, "home");
-        
-        // Kill the hacking script on the host to free up RAM, using the cheaper kill(pid)
-        let hack_script_pid = -1;
-        const procs = ns.ps(purchaseHost);
+    if (taskHost) {
+        let scriptPid = -1;
+        const procs = ns.ps(taskHost);
         for (const proc of procs) {
             if (proc.filename === SCRIPT_NAME) {
                 ns.kill(proc.pid);
-                hack_script_pid = proc.pid
+                scriptPid = proc.pid;
             }
         }
         
-        // Wait for the script to be fully killed
-        while(ns.isRunning(hack_script_pid)) {
+        while(ns.isRunning(scriptPid)) {
              await ns.sleep(TICK_RATE_MS);
         }
 
-        const pid = ns.exec(purchaseScriptName, purchaseHost, 1);
+        const pid = ns.exec(taskScriptName, taskHost, 1);
         if (pid > 0) {
             while(ns.isRunning(pid)) {
                 await ns.sleep(TICK_RATE_MS);
             }
         } else {
-            ns.print(`WARN: Failed to run server management on '${purchaseHost}'.`);
+            ns.print(`WARN: Failed to run ${taskScriptName} on '${taskHost}'.`);
         }
     }
 }
