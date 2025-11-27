@@ -1,9 +1,11 @@
 /** @param {NS} ns */
 export async function main(ns) {
     ns.disableLog("ALL");
-    const target = ns.args[0];
-    const moneyThresh = ns.getServerMaxMoney(target) * 0.75;
-    const securityThresh = ns.getServerMinSecurityLevel(target) + 5;
+    // If no target argument is provided, default to hacking the current host.
+    const target = ns.args[0] || ns.getHostname(); 
+    
+    const moneyThresh = ns.getServerMaxMoney(target) * 0.90;
+    const securityThresh = ns.getServerMinSecurityLevel(target) + 2;
 
     while(true) {
         if (ns.getServerSecurityLevel(target) > securityThresh) {

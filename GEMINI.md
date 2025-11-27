@@ -11,10 +11,12 @@
 s handle.
     *   Extension: .js (avoid .script for legacy Netscript 1.0).
     *   Entry Point: export async function main(ns) { ... }.
-    *   **Function Availability:** Always verify function availability and usage in the in-game Netscript documentation (help <function_name>). Avoid legacy Netscript 1.0 functions (e.g., disableScriptLog) as they may be deprecated or have changed signatures in NS2.
-2.  **Modularity:** Reusable logic should be placed in src/lib/ or specific feature folders, exported, and imported.
+    *   **Function Availability:** Always verify function availability and usage in the in-game Netscript documentation (`help <function_name>`). Avoid legacy Netscript 1.0 functions (e.g., `disableScriptLog`) as they may be deprecated or have changed signatures in NS2.
+    *   **Type Safety:** strictly adhere to the signatures defined in `index.d.ts`. Do not assume API overrides (e.g., `ns.scp` taking an array) exist unless confirmed by the definition file.
+2.  **Modularity:** Reusable logic should be placed in `src/lib/` or specific feature folders, exported, and imported.
 3.  **Memory Efficiency:** Early game scripts must be RAM-conscious.
-4.  **Legacy Reference:** Old scripts are archived in src/.old/ for reference but are excluded from game sync.
+4.  **Singularity API Usage:** Avoid directly using `ns.singularity` API methods in general-purpose scripts due to their high RAM cost. Permission must be sought before integrating them, unless the script is specifically located within a `src/singularity/` subfolder.
+5.  **Legacy Reference:** Old scripts are archived in `src/.old/` for reference but are excluded from game sync.
 
 ## Automation Architecture
 **State Machine Pattern:** The automation is structured as a series of sequential "Stages" (scripts) that handle specific phases of the game. This uses a **Cyclic Handoff** model to maximize RAM efficiency (Daemon and Stage are never running simultaneously).
