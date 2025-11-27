@@ -3,6 +3,7 @@ import { killAll } from '/lib/process.js';
 import { checkTransition } from '/lib/progression.js';
 import { smartExec, deployLibs } from '/lib/deploy.js';
 import { TICK_RATE_MS } from '/lib/constants.js';
+import { spread } from '/hack/spread.js';
 
 /** @param {NS} ns */
 export async function main(ns) {
@@ -92,7 +93,7 @@ async function delegateTask(ns, SCRIPT_NAME, taskScriptName) {
     }
 
     if (taskHost) {
-        ns.tprint(`Delegated task '${taskScriptName}' to '${taskHost}'`)
+        ns.print(`Delegated task '${taskScriptName}' to '${taskHost}'`)
         let scriptPid = -1;
         const procs = ns.ps(taskHost);
         for (const proc of procs) {

@@ -27,7 +27,7 @@ export function manageServers(ns) {
         }
         
         if (bestRam > 0) {
-            const hostname = ns.purchaseServer(`pserv-${myServers.length}`, bestRam);
+            const hostname = ns.purchaseServer(`owned-${myServers.length}`, bestRam);
             if (hostname) {
                 ns.print(`SUCCESS: Purchased new server: ${hostname} (${ns.formatRam(bestRam)})`);
                 return true;

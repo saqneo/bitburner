@@ -22,6 +22,8 @@ export function getAllNodes(ns) {
 /** @param {NS} ns */
 export function getUnownedNodes(ns) {
     const allNodes = getAllNodes(ns);
-    const purchasedServers = ns.getPurchasedServers();
-    return allNodes.filter(node => node !== 'home' && !purchasedServers.includes(node));
+    return allNodes.filter(node => 
+        !node.startsWith('home') && 
+        !node.startsWith('owned')
+    );
 }
