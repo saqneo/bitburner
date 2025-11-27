@@ -17,6 +17,5 @@ Thumbs.db
 
 # AI & Context
 .gemini/
-GEMINI.md
 
 gha-creds-*.json
