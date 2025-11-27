@@ -1,5 +1,23 @@
 /** @param {NS} ns */
 export async function main(ns) {
+    const guide = `
+\n_______________________________________________________
+|            RECOVERY PROTOCOL: EARLY GAME            |
+|_____________________________________________________|
+| 1. [TRAVEL]   :: Go to Chongqing, New Tokyo, or     |
+|                  Ishima immediately.                |
+| 2. [FACTION]  :: Join Tian Di Hui (Req: H:50, $1m). |
+|                  Goal: Social Neg. Asst (+15% Rep). |
+| 3. [BACKDOOR] :: Crack & Backdoor immediately:      |
+|                  -> 'CSEC' (CyberSec)               |
+|                  -> 'avmnite-02h' (NiteSec)         |
+| 4. [ACTION]   :: Work 'Hacking Contracts' for TDH.  |
+|                  Solve .cct files for Rep bursts.   |
+| 5. [SYSTEM]   :: REMINDER: Run 'buyAll' alias!      |
+|_____________________________________________________|
+    `;
+
+    ns.tprint(guide);
     ns.disableLog("ALL");
     
     // Define the state file path
