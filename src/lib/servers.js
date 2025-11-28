@@ -1,3 +1,5 @@
+import { updateCost } from '/lib/cost.js';
+
 /**
  * Library functions for managing purchased servers.
  */
@@ -6,9 +8,9 @@
  * Buys or upgrades servers based on available money.
  * Prioritizes buying new servers up to the limit, then upgrades the best-value server.
  * @param {import('../..').NS} ns 
- * @returns {boolean} - True if a server was bought or upgraded, false otherwise.
+ * @returns {Promise<boolean>} - True if a server was bought or upgraded, false otherwise.
  */
-export function manageServers(ns) {
+export async function manageServers(ns) {
     const maxServers = ns.getPurchasedServerLimit();
     const myServers = ns.getPurchasedServers();
     const money = ns.getServerMoneyAvailable("home");
@@ -17,11 +19,14 @@ export function manageServers(ns) {
     // --- 1. Purchase new servers if under the limit ---
     if (myServers.length < maxServers) {
         let bestRam = 0;
+        let bestCost = 0;
         // Check for affordable servers, from 1PB down to 8GB
         for (let i = 20; i >= 3; i--) { 
             const ram = 2 ** i;
-            if (ns.getPurchasedServerCost(ram) <= budget) {
+            const cost = ns.getPurchasedServerCost(ram);
+            if (cost <= budget) {
                 bestRam = ram;
+                bestCost = cost;
                 break;
             }
         }
@@ -30,6 +35,7 @@ export function manageServers(ns) {
             const hostname = ns.purchaseServer(`owned-${myServers.length}`, bestRam);
             if (hostname) {
                 ns.print(`SUCCESS: Purchased new server: ${hostname} (${ns.formatRam(bestRam)})`);
+                await updateCost(ns, 'server', bestCost);
                 return true;
             }
         }
@@ -57,6 +63,7 @@ export function manageServers(ns) {
     if (bestUpgrade.server) {
         if (ns.upgradePurchasedServer(bestUpgrade.server, bestUpgrade.ram)) {
             ns.print(`SUCCESS: Upgraded server ${bestUpgrade.server} to ${ns.formatRam(bestUpgrade.ram)}.`);
+            await updateCost(ns, 'server', bestUpgrade.cost);
             return true;
         }
     }

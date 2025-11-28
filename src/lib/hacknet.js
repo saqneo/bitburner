@@ -1,3 +1,5 @@
+import { updateCost } from '/lib/cost.js';
+
 /**
  * Library functions for managing the hacknet array.
  * This version avoids using the ns.formulas API to keep RAM costs low.
@@ -7,9 +9,9 @@
  * Finds the single most cost-effective hacknet upgrade and performs it.
  * This includes purchasing new nodes or upgrading existing ones (level, RAM, cores).
  * @param {import('../..').NS} ns 
- * @returns {boolean} - True if an action was taken, false otherwise.
+ * @returns {Promise<boolean>} - True if an action was taken, false otherwise.
  */
-export function manageHacknet(ns) {
+export async function manageHacknet(ns) {
     const money = ns.getServerMoneyAvailable("home");
     const budget = money * 0.25; // Use 2% of available money for hacknet
 
@@ -48,18 +50,22 @@ export function manageHacknet(ns) {
         case 'purchase':
             ns.hacknet.purchaseNode();
             ns.print(`SUCCESS: Purchased new hacknet node.`);
+            await updateCost(ns, 'hacknet', bestUpgrade.cost);
             return true;
         case 'level':
             ns.hacknet.upgradeLevel(bestUpgrade.node, 1);
             ns.print(`SUCCESS: Upgraded hacknet node ${bestUpgrade.node} level.`);
+            await updateCost(ns, 'hacknet', bestUpgrade.cost);
             return true;
         case 'ram':
             ns.hacknet.upgradeRam(bestUpgrade.node, 1);
             ns.print(`SUCCESS: Upgraded hacknet node ${bestUpgrade.node} RAM.`);
+            await updateCost(ns, 'hacknet', bestUpgrade.cost);
             return true;
         case 'core':
             ns.hacknet.upgradeCore(bestUpgrade.node, 1);
             ns.print(`SUCCESS: Upgraded hacknet node ${bestUpgrade.node} cores.`);
+            await updateCost(ns, 'hacknet', bestUpgrade.cost);
             return true;
         case 'none':
         default:
