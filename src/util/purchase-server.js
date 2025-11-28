@@ -5,6 +5,6 @@ export async function main(ns) {
     ns.disableLog("ALL");
     const actionTaken = manageServers(ns);
     if (actionTaken) {
-        ns.tprint("Server manager took action.");
+        ns.print("Server manager took action.");
     }
 }

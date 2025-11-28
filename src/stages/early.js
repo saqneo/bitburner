@@ -22,6 +22,7 @@ export async function main(ns) {
         // --- 2. Infrastructure Management ---
         await delegateServerPurchasesAndUpgrades(ns, SCRIPT_NAME);
         await delegateHacknetUpgrades(ns, SCRIPT_NAME);
+        await delegateContractSolving(ns, SCRIPT_NAME);
         
         // --- 3. State Transition Check ---
         const nextStage = checkTransition(ns, "early");
@@ -67,6 +68,16 @@ async function delegateHacknetUpgrades(ns, SCRIPT_NAME) {
 }
 
 /**
+ * Delegates contract solving to a remote host.
+ * @param {NS} ns
+ * @param {string} SCRIPT_NAME - The script to kill to make RAM available.
+ */
+async function delegateContractSolving(ns, SCRIPT_NAME) {
+    const taskScriptName = '/util/solve-contracts.js';
+    await delegateTask(ns, SCRIPT_NAME, taskScriptName);
+}
+
+/**
  * A generic function to delegate a task to a remote host to save RAM on home.
  * Assumes the script and its dependencies are already on the target host.
  * @param {NS} ns
@@ -93,7 +104,6 @@ async function delegateTask(ns, SCRIPT_NAME, taskScriptName) {
     }
 
     if (taskHost) {
-        ns.print(`Delegated task '${taskScriptName}' to '${taskHost}'`)
         let scriptPid = -1;
         const procs = ns.ps(taskHost);
         for (const proc of procs) {

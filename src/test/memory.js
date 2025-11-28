@@ -11,7 +11,8 @@ export async function main(ns) {
         ["/daemon.js", 6.0],
         ["/stages/early.js", 8.0], // Could theoretically go up to 8.0GB, kept at 5.0GB as a warning check.
         ["/util/purchase-server.js", 16.0], // Max RAM for remote execution
-        ["/util/upgrade-hacknet.js", 16.0]  // Max RAM for remote execution
+        ["/util/upgrade-hacknet.js", 16.0],  // Max RAM for remote execution
+        ["/util/solve-contracts.js", 32.0]  // Heavier script, requires more RAM
     ];
 
     for (const [script, limit] of tests) {
