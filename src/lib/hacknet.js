@@ -11,7 +11,7 @@
  */
 export function manageHacknet(ns) {
     const money = ns.getServerMoneyAvailable("home");
-    const budget = money * 0.25; // Use 25% of available money for hacknet
+    const budget = money * 0.25; // Use 2% of available money for hacknet
 
     let bestUpgrade = { type: 'none', node: -1, cost: Infinity };
 

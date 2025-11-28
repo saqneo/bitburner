@@ -7,15 +7,23 @@ export async function main(ns) {
 | 1. [TRAVEL]   :: Go to Chongqing, New Tokyo, or     |
 |                  Ishima immediately.                |
 | 2. [FACTION]  :: Join Tian Di Hui (Req: H:50, $1m). |
-|                  Goal: Social Neg. Asst (+15% Rep). |
 | 3. [BACKDOOR] :: Crack & Backdoor immediately:      |
 |                  -> 'CSEC' (CyberSec)               |
 |                  -> 'avmnite-02h' (NiteSec)         |
+|-----------------------------------------------------|
+|            SHOPPING LIST (PRIORITY ORDER)           |
+|-----------------------------------------------------|
+| 1. Neuroreceptor Manager (TDH) :: [Auto-Focus Work] |
+| 2. Social Neg. Asst (TDH)      :: [Rep Gain +15%]   |
+| 3. ADR-V1 Gene (TDH)           :: [Rep Gain +10%]   |
+| 4. Cranial Signal Proc (CSEC)  :: [Hack Speed/Power]|
+| 5. BitWire (CSEC/NiteSec)      :: [Hack Skill]      |
+|-----------------------------------------------------|
 | 4. [ACTION]   :: Work 'Hacking Contracts' for TDH.  |
 |                  Solve .cct files for Rep bursts.   |
 | 5. [SYSTEM]   :: REMINDER: Run 'buyAll' alias!      |
 |_____________________________________________________|
-    `;
+`;
 
     ns.tprint(guide);
     ns.disableLog("ALL");
