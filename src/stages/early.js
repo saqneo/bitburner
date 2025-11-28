@@ -17,8 +17,6 @@ export async function main(ns) {
     };
 
     // Initial deploy of libs (via auxiliary script)
-    // We need to make sure this exists.
-    // For now, we assume deployLibs logic is in a script. We will create /util/deploy-all.js
     launchAux("/util/deploy-all.js");
 
     while (true) {
@@ -33,6 +31,9 @@ export async function main(ns) {
         const target = getBestTarget(ns, hosts);
         
         if (target) {
+            // Light reporting for external HUD
+            ns.write("/data/target.txt", target, "w");
+
             for (const host of hosts) {
                 if (!ns.hasRootAccess(host)) continue;
 
@@ -41,12 +42,12 @@ export async function main(ns) {
                 const usedRam = ns.getServerUsedRam(host);
                 let availableRam = maxRam - usedRam;
 
-        // Reserve RAM on home for this controller script
-        if (host === "home") {
-            // Controller uses ~7GB now due to hackAnalyzeChance
-            const RESERVED_HOME = 7.5; 
-            availableRam = Math.max(0, availableRam - RESERVED_HOME);
-        }
+                // Reserve RAM on home for this controller script
+                if (host === "home") {
+                    // Controller uses ~7GB now due to hackAnalyzeChance
+                    const RESERVED_HOME = 7.5; 
+                    availableRam = Math.max(0, availableRam - RESERVED_HOME);
+                }
 
                 const threads = Math.floor(availableRam / scriptRam);
 
@@ -60,9 +61,6 @@ export async function main(ns) {
         const nextStage = checkTransition(ns, "early");
         if (nextStage) {
             ns.tprint(`SUCCESS: Early Game Goals Met. Transitioning to '${nextStage}'.`);
-            // We don't killAll here to save RAM import. Daemon will handle it or we just spawn.
-            // Actually, if we spawn, the current script dies. 
-            // Daemon should probably killall on start if it switches stages.
             ns.write("/data/state.txt", nextStage, "w");
             ns.spawn("/daemon.js");
         }
@@ -91,7 +89,6 @@ function getBestTarget(ns, hosts) {
 
         // Calculate score: Profit per Thread-Second
         // Money * HackChance * HackPercent / Time
-        // This prioritizes servers that give the most money per RAM-second invested.
         const money = ns.getServerMaxMoney(host);
         const chance = ns.hackAnalyzeChance(host);
         const time = ns.getHackTime(host);
@@ -126,11 +123,7 @@ async function delegateInfrastructure(ns, hosts) {
          await runDelegate(ns, '/util/upgrade-hacknet.js', hosts);
     }
 
-    // Check for contracts - slightly inefficient to ls every loop but ls is fast.
-    // To save RAM, we could skip this check or move it to an aux script.
-    // Let's keep it simple: check home only? No, contracts spawn everywhere.
-    // We can assume if we have money/ram we should run the solver occasionally.
-    // Let's just try to run it every minute?
+    // Check for contracts
     if (Math.random() < 0.05) { // ~ every 20 loops (10s)
          await runDelegate(ns, '/util/solve-contracts.js', hosts);
     }
