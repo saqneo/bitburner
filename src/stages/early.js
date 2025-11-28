@@ -1,149 +1,153 @@
-import { getAllNodes, getUnownedNodes } from '/lib/map.js';
-import { killAll } from '/lib/process.js';
+import { getAllNodes } from '/lib/map.js';
 import { checkTransition } from '/lib/progression.js';
-import { smartExec, deployLibs } from '/lib/deploy.js';
-import { TICK_RATE_MS } from '/lib/constants.js';
-import { spread } from '/hack/spread.js';
 import { getCost } from '/lib/cost.js';
 
 /** @param {NS} ns */
 export async function main(ns) {
     ns.disableLog("ALL");
-    ns.print("Stage: EARLY GAME started.");
+    ns.print("Stage: EARLY GAME (Lightweight Dispatcher) started.");
 
-    const SCRIPT_NAME = "hack/early-hack.js";
+    const WORKER_SCRIPT = "/hack/early-hack.js";
+
+    // Helper to launch auxiliary scripts without importing them (saves RAM)
+    const launchAux = (script) => {
+        if (!ns.isRunning(script, "home")) {
+            ns.exec(script, "home");
+        }
+    };
+
+    // Initial deploy of libs (via auxiliary script)
+    // We need to make sure this exists.
+    // For now, we assume deployLibs logic is in a script. We will create /util/deploy-all.js
+    launchAux("/util/deploy-all.js");
 
     while (true) {
-        // 1. Spread & Deploy
-        spread(ns);
-        const allHosts = getAllNodes(ns); // Used for deploying libs and utils to ALL rooted hosts
-        await deployLibs(ns, allHosts); // Deploy all libs and utils
-        await delegateHackScript(ns, SCRIPT_NAME); // Delegate hack script deployment and execution
-
-        // --- 2. Infrastructure Management ---
-        await delegateServerPurchasesAndUpgrades(ns, SCRIPT_NAME, allHosts);
-        await delegateHacknetUpgrades(ns, SCRIPT_NAME, allHosts);
-        await delegateContractSolving(ns, SCRIPT_NAME, allHosts);
+        // 1. Spread (Root access) - offloaded to save RAM
+        launchAux("/hack/spread.js");
         
-        // --- 3. State Transition Check ---
+        // 2. Infrastructure (Non-blocking)
+        await delegateInfrastructure(ns, getAllNodes(ns));
+
+        // 3. Dispatcher Loop
+        const hosts = getAllNodes(ns);
+        const target = getBestTarget(ns, hosts);
+        
+        if (target) {
+            for (const host of hosts) {
+                if (!ns.hasRootAccess(host)) continue;
+
+                const scriptRam = ns.getScriptRam(WORKER_SCRIPT);
+                const maxRam = ns.getServerMaxRam(host);
+                const usedRam = ns.getServerUsedRam(host);
+                let availableRam = maxRam - usedRam;
+
+        // Reserve RAM on home for this controller script
+        if (host === "home") {
+            // Controller uses ~7GB now due to hackAnalyzeChance
+            const RESERVED_HOME = 7.5; 
+            availableRam = Math.max(0, availableRam - RESERVED_HOME);
+        }
+
+                const threads = Math.floor(availableRam / scriptRam);
+
+                if (threads > 0) {
+                    ns.exec(WORKER_SCRIPT, host, threads, target);
+                }
+            }
+        }
+
+        // 4. State Transition Check
         const nextStage = checkTransition(ns, "early");
         if (nextStage) {
             ns.tprint(`SUCCESS: Early Game Goals Met. Transitioning to '${nextStage}'.`);
-            killAll(ns);
+            // We don't killAll here to save RAM import. Daemon will handle it or we just spawn.
+            // Actually, if we spawn, the current script dies. 
+            // Daemon should probably killall on start if it switches stages.
             ns.write("/data/state.txt", nextStage, "w");
             ns.spawn("/daemon.js");
         }
 
-        await ns.sleep(5000);
+        // Sleep shorter because we want to catch free slots as soon as workers finish
+        await ns.sleep(500);
     }
 }
 
 /**
- * Delegates the deployment and execution of the main hacking script to unowned hosts.
+ * Selects the best target based on Profit per Second.
  * @param {NS} ns
- * @param {string} SCRIPT_NAME - The name of the main hacking script (e.g., "hack/early-hack.js").
+ * @param {string[]} hosts 
+ * @returns {string|null}
  */
-async function delegateHackScript(ns, SCRIPT_NAME) {
-    const targetHosts = getUnownedNodes(ns);
-    smartExec(ns, SCRIPT_NAME, targetHosts);
-}
+function getBestTarget(ns, hosts) {
+    const playerHackLevel = ns.getHackingLevel();
+    let bestTarget = null;
+    let maxScore = 0;
 
-/**
- * Delegates server purchasing to a remote host.
- * @param {NS} ns
- * @param {string} SCRIPT_NAME - The script to kill to make RAM available.
- * @param {string[]} allHosts - List of all available hosts.
- */
-async function delegateServerPurchasesAndUpgrades(ns, SCRIPT_NAME, allHosts) {
-    // Prerequisite: Check if we have enough money to potentially buy/upgrade something.
-    // We use the cost of the last purchase as a heuristic.
-    const lastCost = getCost(ns, 'server') || 55000;
-    if (ns.getServerMoneyAvailable("home") < lastCost) return;
+    for (const host of hosts) {
+        if (host === 'home' || host.startsWith('owned-')) continue;
+        if (!ns.hasRootAccess(host)) continue;
+        if (ns.getServerRequiredHackingLevel(host) > playerHackLevel) continue;
+        if (ns.getServerMaxMoney(host) <= 0) continue;
 
-    const taskScriptName = '/util/purchase-server.js';
-    await delegateTask(ns, SCRIPT_NAME, taskScriptName, allHosts);
-}
-
-/**
- * Delegates hacknet upgrades to a remote host.
- * @param {NS} ns
- * @param {string} SCRIPT_NAME - The script to kill to make RAM available.
- * @param {string[]} allHosts - List of all available hosts.
- */
-async function delegateHacknetUpgrades(ns, SCRIPT_NAME, allHosts) {
-    // Prerequisite: Check if we have enough money for basic hacknet operations.
-    // We use the cost of the last purchase as a heuristic.
-    const lastCost = getCost(ns, 'hacknet') || 1000;
-    if (ns.getServerMoneyAvailable("home") < lastCost) return;
-
-    const taskScriptName = '/util/upgrade-hacknet.js';
-    await delegateTask(ns, SCRIPT_NAME, taskScriptName, allHosts);
-}
-
-/**
- * Delegates contract solving to a remote host.
- * @param {NS} ns
- * @param {string} SCRIPT_NAME - The script to kill to make RAM available.
- * @param {string[]} allHosts - List of all available hosts.
- */
-async function delegateContractSolving(ns, SCRIPT_NAME, allHosts) {
-    // Prerequisite: Check for any contracts on the network
-    const hasContracts = allHosts.some(host => ns.ls(host, ".cct").length > 0);
-    
-    if (!hasContracts) return;
-
-    const taskScriptName = '/util/solve-contracts.js';
-    await delegateTask(ns, SCRIPT_NAME, taskScriptName, allHosts);
-}
-
-/**
- * A generic function to delegate a task to a remote host to save RAM on home.
- * Assumes the script and its dependencies are already on the target host.
- * @param {NS} ns
- * @param {string} SCRIPT_NAME - The script to kill on the remote host for RAM.
- * @param {string} taskScriptName - The script to execute on the remote host.
- * @param {string[]} allHosts - List of all available hosts.
- */
-async function delegateTask(ns, SCRIPT_NAME, taskScriptName, allHosts) {
-    // Ram cost of the task script itself, plus its direct dependencies
-    // Note: this is a simplification. We assume dependencies are in /lib/
-    const ramForTask = ns.getScriptRam(taskScriptName) 
-                     + ns.getScriptRam(taskScriptName.replace('/util/', '/lib/'));
-
-
-    const potentialHosts = (allHosts || getAllNodes(ns))
-        .filter(h => h !== 'home' && ns.hasRootAccess(h) && ns.getServerMaxRam(h) >= 16)
-        .sort((a,b) => ns.getServerMaxRam(b));
-
-    let taskHost = null;
-    for (const host of potentialHosts) {
-        if (ns.getServerMaxRam(host) >= ramForTask) {
-            taskHost = host;
-            break;
-        }
-    }
-
-    if (taskHost) {
-        let scriptPid = -1;
-        const procs = ns.ps(taskHost);
-        for (const proc of procs) {
-            if (proc.filename === SCRIPT_NAME) {
-                ns.kill(proc.pid);
-                scriptPid = proc.pid;
-            }
-        }
+        // Calculate score: Profit per Thread-Second
+        // Money * HackChance * HackPercent / Time
+        // This prioritizes servers that give the most money per RAM-second invested.
+        const money = ns.getServerMaxMoney(host);
+        const chance = ns.hackAnalyzeChance(host);
+        const time = ns.getHackTime(host);
+        const percent = ns.hackAnalyze(host);
         
-        while(ns.isRunning(scriptPid)) {
-             await ns.sleep(TICK_RATE_MS);
-        }
+        if (time === 0 || percent === 0) continue;
 
-        const pid = ns.exec(taskScriptName, taskHost, 1);
-        if (pid > 0) {
-            while(ns.isRunning(pid)) {
-                await ns.sleep(TICK_RATE_MS);
-            }
-        } else {
-            ns.print(`WARN: Failed to run ${taskScriptName} on '${taskHost}'.`);
+        const score = (money * chance * percent) / time;
+
+        if (score > maxScore) {
+            maxScore = score;
+            bestTarget = host;
+        }
+    }
+    return bestTarget;
+}
+
+/**
+ * Delegates infrastructure tasks.
+ * @param {NS} ns 
+ * @param {string[]} hosts
+ */
+async function delegateInfrastructure(ns, hosts) {
+    // Simple fire-and-forget checks
+    const serverCost = getCost(ns, 'server') || 55000;
+    if (ns.getServerMoneyAvailable("home") > serverCost) {
+        await runDelegate(ns, '/util/purchase-server.js', hosts);
+    }
+
+    const hacknetCost = getCost(ns, 'hacknet') || 1000;
+    if (ns.getServerMoneyAvailable("home") > hacknetCost) {
+         await runDelegate(ns, '/util/upgrade-hacknet.js', hosts);
+    }
+
+    // Check for contracts - slightly inefficient to ls every loop but ls is fast.
+    // To save RAM, we could skip this check or move it to an aux script.
+    // Let's keep it simple: check home only? No, contracts spawn everywhere.
+    // We can assume if we have money/ram we should run the solver occasionally.
+    // Let's just try to run it every minute?
+    if (Math.random() < 0.05) { // ~ every 20 loops (10s)
+         await runDelegate(ns, '/util/solve-contracts.js', hosts);
+    }
+}
+
+async function runDelegate(ns, script, hosts) {
+    for (const h of hosts) {
+        if (ns.isRunning(script, h)) return;
+    }
+
+    const ram = ns.getScriptRam(script);
+    // Simple find first fit to save sort RAM
+    for (const host of hosts) {
+        if (!ns.hasRootAccess(host)) continue;
+        if ((ns.getServerMaxRam(host) - ns.getServerUsedRam(host)) >= ram) {
+             ns.exec(script, host, 1);
+             return;
         }
     }
 }
