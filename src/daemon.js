@@ -1,3 +1,5 @@
+import { spread } from '/lib/spread.js';
+
 /** @param {NS} ns */
 export async function main(ns) {
     const guide = `
@@ -42,12 +44,11 @@ export async function main(ns) {
 
     const script = `/stages/${state}.js`;
     
-    // Service Launching (if RAM permits)
-    // Hacknet Manager (Service) - Requires ~4GB
-    // Only run if we have > 12GB RAM (e.g., 16GB+) to ensure we don't starve the stage script.
-    if (ns.getServerMaxRam("home") > 12 && ns.fileExists("/hacknet.js") && !ns.isRunning("/hacknet.js", "home")) {
-        ns.print("Daemon: Launching Hacknet Manager (Service)...");
-        ns.exec("/hacknet.js", "home");
+    // Immediate Network Scan & Spread
+    // Ensure we have root access to available servers immediately upon boot/recovery.
+    // Continue spreading until no new servers are compromised to ensure maximum reach.
+    while (spread(ns)) {
+        await ns.sleep(50); 
     }
 
     // Spawn the Stage

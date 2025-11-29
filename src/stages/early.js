@@ -9,24 +9,21 @@ export async function main(ns) {
 
     const WORKER_SCRIPT = "/hack/early-hack.js";
 
-    // Helper to launch auxiliary scripts without importing them (saves RAM)
-    const launchAux = (script) => {
-        if (!ns.isRunning(script, "home")) {
-            ns.exec(script, "home");
-        }
-    };
-
     // Initial deploy of libs (via auxiliary script)
-    launchAux("/util/deploy-all.js");
+    const deployPid = ns.exec("/util/deploy-all.js", "home");
+    if (deployPid) {
+        ns.tprint("Waiting for initial deployment...");
+        while (ns.isRunning(deployPid, "home")) {
+            await ns.sleep(100);
+        }
+    }
 
     while (true) {
-        // 1. Spread (Root access) - offloaded to save RAM
-        launchAux("/hack/spread.js");
-        
-        // 2. Infrastructure (Non-blocking)
-        await delegateInfrastructure(ns, getAllNodes(ns));
+        // 1. Infrastructure & Expansion (Non-blocking, delegated to any free node)
+        const nodes = getAllNodes(ns);
+        await delegateInfrastructure(ns, nodes);
 
-        // 3. Dispatcher Loop
+        // 2. Dispatcher Loop
         const hosts = getAllNodes(ns);
         const target = getBestTarget(ns, hosts);
         
@@ -52,7 +49,8 @@ export async function main(ns) {
                 const threads = Math.floor(availableRam / scriptRam);
 
                 if (threads > 0) {
-                    ns.exec(WORKER_SCRIPT, host, threads, target);
+                    ns.print(`Can deploy threads=${threads} of '${WORKER_SCRIPT} ${target}' to '${host}' with ${availableRam} RAM.`)
+                    ns.print(`${ns.exec(WORKER_SCRIPT, host, threads, target)}`)
                 }
             }
         }
@@ -103,6 +101,8 @@ function getBestTarget(ns, hosts) {
             bestTarget = host;
         }
     }
+
+    ns.print(`Found bestTarget '${bestTarget}'.`)
     return bestTarget;
 }
 
@@ -112,7 +112,12 @@ function getBestTarget(ns, hosts) {
  * @param {string[]} hosts
  */
 async function delegateInfrastructure(ns, hosts) {
-    // Simple fire-and-forget checks
+    // 1. Critical Expansion (Spread & Deploy)
+    // Always attempt to run these if not running.
+    await runDelegate(ns, '/util/spread.js', hosts);
+    await runDelegate(ns, '/util/deploy-all.js', hosts);
+
+    // 2. Purchasing (Cost-based)
     const serverCost = getCost(ns, 'server') || 55000;
     if (ns.getServerMoneyAvailable("home") > serverCost) {
         await runDelegate(ns, '/util/purchase-server.js', hosts);
@@ -123,7 +128,7 @@ async function delegateInfrastructure(ns, hosts) {
          await runDelegate(ns, '/util/upgrade-hacknet.js', hosts);
     }
 
-    // Check for contracts
+    // 3. Contracts (Occasional)
     if (Math.random() < 0.05) { // ~ every 20 loops (10s)
          await runDelegate(ns, '/util/solve-contracts.js', hosts);
     }
