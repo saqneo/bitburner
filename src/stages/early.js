@@ -112,10 +112,15 @@ function getBestTarget(ns, hosts) {
  * @param {string[]} hosts
  */
 async function delegateInfrastructure(ns, hosts) {
+    const RARE_TASK_CHANCE = 0.004; // Approx once every 2 mins (240 loops @ 500ms)
+
     // 1. Critical Expansion (Spread & Deploy)
-    // Always attempt to run these if not running.
-    await runDelegate(ns, '/util/spread.js', hosts);
-    await runDelegate(ns, '/util/deploy-all.js', hosts);
+    if (Math.random() < RARE_TASK_CHANCE) {
+        await runDelegate(ns, '/util/spread.js', hosts);
+    }
+    if (Math.random() < RARE_TASK_CHANCE) {
+        await runDelegate(ns, '/util/deploy-all.js', hosts);
+    }
 
     // 2. Purchasing (Cost-based)
     const serverCost = getCost(ns, 'server') || 55000;
@@ -129,7 +134,7 @@ async function delegateInfrastructure(ns, hosts) {
     }
 
     // 3. Contracts (Occasional)
-    if (Math.random() < 0.05) { // ~ every 20 loops (10s)
+    if (Math.random() < RARE_TASK_CHANCE) {
          await runDelegate(ns, '/util/solve-contracts.js', hosts);
     }
 }
