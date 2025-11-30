@@ -17,6 +17,13 @@ s handle.
 3.  **Memory Efficiency:** Early game scripts must be RAM-conscious.
 4.  **Singularity API Usage:** Avoid directly using `ns.singularity` API methods in general-purpose scripts due to their high RAM cost. Permission must be sought before integrating them, unless the script is specifically located within a `src/singularity/` subfolder.
 5.  **Legacy Reference:** Old scripts are archived in `src/.old/` for reference but are excluded from game sync.
+6.  **Logging Philosophy (ns.print vs. ns.tprint):**
+    *   **`ns.print`:** Use for internal logs, recurring messages, and general script output that appears in the script's own log window (accessed via `tail`). This is the default for most background operations to avoid terminal spam.
+    *   **`ns.tprint`:** Reserve for sparse, important, or one-time events that require immediate user attention in the main terminal window. Examples include:
+        *   Successful contract completion or failure notifications.
+        *   Notifications of new servers being rooted (nuked) or purchased/upgraded.
+        *   Critical error messages or stage transitions.
+        *   Output from interactive CLI tools (e.g., `util/path.js`, `util/killall.js`).
 
 ## Automation Architecture
 **State Machine Pattern:** The automation is structured as a series of sequential "Stages" (scripts) that handle specific phases of the game. This uses a **Cyclic Handoff** model to maximize RAM efficiency (Daemon and Stage are never running simultaneously).
