@@ -103,7 +103,7 @@ export function distributeTask(ns, scriptName, neededThreads, hosts, scriptArgs 
 
 
 /**
- * Deploys all scripts from /lib/ and /util/ to a list of hosts.
+ * Deploys all scripts from /lib/, /util/, and /hack/ to a list of hosts.
  * @param {NS} ns
  * @param {string[]} hosts - An array of hostnames to deploy the libraries to.
  * @returns {Promise<void>}
@@ -112,12 +112,15 @@ export async function deployLibs(ns, hosts) {
     const remoteHosts = hosts.filter(h => h !== "home");
     if (remoteHosts.length === 0) return;
 
-    const libFiles = ns.ls("home", "/lib/").filter(f => f.endsWith('.js'));
-    const utilFiles = ns.ls("home", "/util/").filter(f => f.endsWith('.js'));
-    const hackFiles = ns.ls("home", "/hack/").filter(f => f.endsWith('.js'));
-    const allLibs = [...libFiles, ...utilFiles, ...hackFiles];
+    // Direct copy of entire directories to avoid ns.ls RAM cost.
+    // This will copy all files within these directories.
+    const directoriesToCopy = ["/lib/", "/util/", "/hack/"];
 
     for (const host of remoteHosts) {
-        await ns.scp(allLibs, host, "home");
+        // ns.scp can take an array of sources, or a single directory.
+        // Copying directory-by-directory is clearer here.
+        for (const dir of directoriesToCopy) {
+            await ns.scp(dir, host, "home");
+        }
     }
 }
