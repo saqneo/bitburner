@@ -2,7 +2,6 @@ import { getAllNodes } from '/lib/map.js';
 import { checkTransition } from '/lib/progression.js';
 import { getCost } from '/lib/cost.js';
 import { spread } from '/lib/spread.js';
-import { deployLibs } from '/lib/deploy.js';
 
 /** @param {NS} ns */
 export async function main(ns) {
@@ -36,17 +35,16 @@ _______________________________________________________
 `;
     ns.tprint(guide);
 
-    // --- 1.1 CLEANUP ---
-    // Clear temporary data from previous runs to prevent stale state (e.g. costs)
-    ns.print("Daemon: Clearing /tmp/ directory...");
-    ns.rm("/tmp/", "home", { recursive: true });
-
     // Initial Setup
     ns.print("Daemon: Running initial network spread...");
     while (spread(ns)) await ns.sleep(50);
     
-    ns.print("Daemon: Running initial library deploy...");
-    await deployLibs(ns, getAllNodes(ns));
+    // Offload heavy maintenance tasks (cleanup, deploy) to the network to save RAM on home/daemon.
+    // These will run on any available node (e.g., n00dles).
+    ns.print("Daemon: Delegating cleanup and deployment...");
+    const nodes = getAllNodes(ns);
+    await runDelegate(ns, '/util/cleanup.js', nodes);
+    await runDelegate(ns, '/util/deploy-all.js', nodes);
 
     // --- 2. MAIN LOOP ---
     while (true) {
@@ -72,7 +70,7 @@ async function runEarly(ns) {
     while (true) {
         // A. Infrastructure & Expansion
         const hosts = getAllNodes(ns);
-        await delegateInfrastructure(ns, nodes);
+        await delegateInfrastructure(ns, hosts);
 
         // B. Dispatcher Loop
         const target = getBestTarget(ns, hosts);
@@ -161,32 +159,27 @@ function getBestTarget(ns, hosts) {
  * @param {string[]} hosts
  */
 async function delegateInfrastructure(ns, hosts) {
-    
     const RARE_TASK_CHANCE = 0.004; // ~2 mins
-    if (Math.random() > RARE_TASK_CHANCE) {
-        return
+    
+    // 1. Critical Expansion & Maintenance
+    // Run all maintenance tasks together when the chance hits
+    if (Math.random() < RARE_TASK_CHANCE) {
+        ns.print("Daemon: Triggering periodic maintenance (Spread/Deploy/Contracts)...");
+        await runDelegate(ns, '/util/spread.js', hosts);
+        await runDelegate(ns, '/util/deploy-all.js', hosts);
+        await runDelegate(ns, '/util/solve-contracts.js', hosts);
     }
 
-    ns.tprint('running')
-
-    // 1. Critical Expansion (Spread & Deploy)
-    await runDelegate(ns, '/util/spread.js', hosts);
-    await runDelegate(ns, '/util/deploy-all.js', hosts);
-
-    // 2. Purchasing
+    // 2. Purchasing (Always check if affordable)
     const serverCost = getCost(ns, 'server') || 55000;
     if (ns.getServerMoneyAvailable("home") > serverCost) {
         await runDelegate(ns, '/util/purchase-server.js', hosts);
     }
 
     const hacknetCost = getCost(ns, 'hacknet') || 1000;
-    ns.tprint(`${hacknetCost}`)
     if (ns.getServerMoneyAvailable("home") > hacknetCost) {
          await runDelegate(ns, '/util/upgrade-hacknet.js', hosts);
     }
-
-    // 3. Contracts
-    await runDelegate(ns, '/util/solve-contracts.js', hosts);
 }
 
 async function runDelegate(ns, script, hosts) {
