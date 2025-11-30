@@ -25,10 +25,12 @@
 1.  **Persistence:** The current stage is stored in `/data/state.txt`. This ensures recovery after game restarts.
 2.  **Entry Point (`src/daemon.js`):**
     *   Reads `/data/state.txt`.
-    *   **Spawns** (replaces itself with) the corresponding stage script (e.g., `src/stages/early.js`).
+    *   **Executes** the logic for the current stage.
+    *   **Early Game:** Runs internally (`runEarly` function) to manage atomic workers.
+    *   **Mid/End Game:** May spawn dedicated stage scripts (e.g., `src/stages/midgame.js`) if complexity requires it.
     *   Defaults to `early` if no state file exists.
 3.  **Stage Scripts (`src/stages/*.js`):**
-    *   **Responsibility:** Manage the game for that specific phase (e.g., "Early Game" uses simple hack scripts, "Mid Game" uses batchers).
+    *   **Responsibility:** Manage the game for complex phases (e.g., "Mid Game" batchers) that require dedicated RAM/Logic.
     *   **Transition:** When a stage is complete (RAM/Money thresholds met):
         1.  **Cleanup:** Kill all worker scripts (e.g., `early-hack.js`) spawned by this stage.
         2.  **Persist:** Write the *next* stage name to `/data/state.txt`.
