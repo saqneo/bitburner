@@ -7,30 +7,16 @@
 **Environment:** Node.js local environment synced to Bitburner via itburner-filesync.
 
 ## Architectural Guidelines
-1.  **NS2 Standards:** All scripts must use the sync/await pattern and the 
-s handle.
-    *   Extension: .js (avoid .script for legacy Netscript 1.0).
-    *   Entry Point: export async function main(ns) { ... }.
-    *   **Function Availability:** Always verify function availability and usage in the in-game Netscript documentation (`help <function_name>`). Avoid legacy Netscript 1.0 functions (e.g., `disableScriptLog`) as they may be deprecated or have changed signatures in NS2.
-    *   **Type Safety:** strictly adhere to the signatures defined in `index.d.ts`. Do not assume API overrides (e.g., `ns.scp` taking an array) exist unless confirmed by the definition file.
-2.  **Modularity:** Reusable logic should be placed in `src/lib/` or specific feature folders, exported, and imported.
-3.  **Memory Efficiency:** Early game scripts must be RAM-conscious.
-4.  **Singularity API Usage:** Avoid directly using `ns.singularity` API methods in general-purpose scripts due to their high RAM cost. Permission must be sought before integrating them, unless the script is specifically located within a `src/singularity/` subfolder.
-    *   **Legacy Reference:** Old scripts are archived in `src/.old/` for reference but are excluded from game sync.
-6.  **Logging Philosophy (ns.print vs. ns.tprint):**
-    *   **`ns.print`:** Use for internal logs, recurring messages, and general script output that appears in the script's own log window (accessed via `tail`). This is the default for most background operations to avoid terminal spam.
-    *   **`ns.tprint`:** Reserve for sparse, important, or one-time events that require immediate user attention in the main terminal window. Examples include:
-        *   Successful contract completion or failure notifications.
-        *   Notifications of new servers being rooted (nuked) or purchased/upgraded.
-        *   Critical error messages or stage transitions.
-        *   Output from interactive CLI tools (e.g., `util/path.js`, `util/killall.js`).
-7.  **Daemon Philosophy (Orchestrator Pattern):**
-    *   `src/daemon.js` should serve as a high-level **orchestrator**. It manages the state machine, scheduling loop, and top-level decision flow.
-    *   **Abstraction:** Complex "business logic" (e.g., target valuation, thread calculation, specific hacking strategies) should be abstracted into dedicated libraries (e.g., `src/lib/strategy.js`, `src/lib/math.js`) or separate worker scripts.
-    *   **Readability:** The daemon's main loop should be readable as a sequence of high-level intents ("Get Targets", "Plan Action", "Dispatch"), rather than a dense block of mathematical calculations.
-    *   **RAM Management:** Keep the daemon lightweight. Offload heavy, one-time operations to transient utility scripts (`src/util/`) delegated to the network.
-8.  **Naming Conventions:** Strive for clear, descriptive, and self-documenting names for files, functions, and variables. Names should accurately reflect the purpose and content of the code. Avoid overly generic terms (e.g., "strategy", "util") when a more specific description is available.
-9.  **Commit Standards:** Commit messages must be comprehensive and reference all changed files. Do not just summarize the last action; explicitly list the changes made to each file involved in the commit to ensure a clear history.
+1.  **NS2 Standards:** Use `async/await` and `ns` handle. Adhere strictly to `index.d.ts` for type safety. Verify function RAM costs/availability.
+2.  **Modularity:** Encapsulate logic in `src/lib/` or feature folders.
+3.  **RAM Efficiency:** General scripts must be lightweight. Avoid `ns.singularity` in persistent scripts unless necessary.
+4.  **Legacy Code:** Archived scripts in `src/.old/` are for reference only and excluded from sync.
+5.  **Logging:** Use `ns.print` for internal logs. Use `ns.tprint` *only* for critical alerts or CLI output.
+6.  **Daemon Pattern:** `src/daemon.js` is a lightweight **orchestrator**. Abstract logic to libraries (`src/lib/target-analysis.js`). Offload heavy tasks to transient scripts (`src/util/`).
+7.  **Naming:** Use descriptive, self-documenting names for all symbols.
+8.  **Commit Standards:** Adhere to [Conventional Commits](https://www.conventionalcommits.org/). 
+    *   **Type:** Reflect the most significant change (e.g., use `feat`/`fix` over `docs` if code changed).
+    *   **Message:** Summarize the impact of changes across affected components. Listing every file is not required, but key changes must be noted.
 
 ## Automation Architecture
 **State Machine Pattern:** The automation is structured as a series of sequential "Stages" (scripts) that handle specific phases of the game. This uses a **Cyclic Handoff** model to maximize RAM efficiency (Daemon and Stage are never running simultaneously).
