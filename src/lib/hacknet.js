@@ -49,22 +49,22 @@ export async function manageHacknet(ns) {
     switch (bestUpgrade.type) {
         case 'purchase':
             ns.hacknet.purchaseNode();
-            ns.print(`SUCCESS: Purchased new hacknet node.`);
+            ns.tprint(`SUCCESS: Purchased new hacknet node.`);
             await updateCost(ns, 'hacknet', bestUpgrade.cost);
             return true;
         case 'level':
             ns.hacknet.upgradeLevel(bestUpgrade.node, 1);
-            ns.print(`SUCCESS: Upgraded hacknet node ${bestUpgrade.node} level.`);
+            ns.tprint(`SUCCESS: Upgraded hacknet node ${bestUpgrade.node} level.`);
             await updateCost(ns, 'hacknet', bestUpgrade.cost);
             return true;
         case 'ram':
             ns.hacknet.upgradeRam(bestUpgrade.node, 1);
-            ns.print(`SUCCESS: Upgraded hacknet node ${bestUpgrade.node} RAM.`);
+            ns.tprint(`SUCCESS: Upgraded hacknet node ${bestUpgrade.node} RAM.`);
             await updateCost(ns, 'hacknet', bestUpgrade.cost);
             return true;
         case 'core':
             ns.hacknet.upgradeCore(bestUpgrade.node, 1);
-            ns.print(`SUCCESS: Upgraded hacknet node ${bestUpgrade.node} cores.`);
+            ns.tprint(`SUCCESS: Upgraded hacknet node ${bestUpgrade.node} cores.`);
             await updateCost(ns, 'hacknet', bestUpgrade.cost);
             return true;
         case 'none':

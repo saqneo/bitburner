@@ -34,7 +34,7 @@ export async function manageServers(ns) {
         if (bestRam > 0) {
             const hostname = ns.purchaseServer(`owned-${myServers.length}`, bestRam);
             if (hostname) {
-                ns.print(`SUCCESS: Purchased new server: ${hostname} (${ns.formatRam(bestRam)})`);
+                ns.tprint(`SUCCESS: Purchased new server: ${hostname} (${ns.formatRam(bestRam)})`);
                 await updateCost(ns, 'server', bestCost);
                 return true;
             }
@@ -62,7 +62,7 @@ export async function manageServers(ns) {
 
     if (bestUpgrade.server) {
         if (ns.upgradePurchasedServer(bestUpgrade.server, bestUpgrade.ram)) {
-            ns.print(`SUCCESS: Upgraded server ${bestUpgrade.server} to ${ns.formatRam(bestUpgrade.ram)}.`);
+            ns.tprint(`SUCCESS: Upgraded server ${bestUpgrade.server} to ${ns.formatRam(bestUpgrade.ram)}.`);
             await updateCost(ns, 'server', bestUpgrade.cost);
             return true;
         }

@@ -18,7 +18,6 @@ export function spread(ns) {
 
     let targets = map.getAllNodes(ns)
     let nuked_count = 0
-
     for (const host of targets) {
         // Skip if we already have root access
         if (ns.hasRootAccess(host)) continue
@@ -34,13 +33,13 @@ export function spread(ns) {
                 port_openers[i](host)
             }
             // Nuke
-            ns.nuke(host)
+            ns.tprint(`Nuked '${host}'.`)
             nuked_count++
         }
     }
     
     if (nuked_count > 0) {
-        ns.print(`Spread: Nuked ${nuked_count} new servers.`)
+        ns.tprint(`Spread: Nuked ${nuked_count} new servers.`)
         return true;
     }
     
