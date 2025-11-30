@@ -118,6 +118,9 @@ async function runEarly(ns) {
             ns.write("/data/state.txt", nextStage, "w");
             return; 
         }
+        
+        // D. Utilize Remaining Home RAM for Sharing
+        manageShare(ns);
 
         await ns.sleep(500);
     }
@@ -149,15 +152,12 @@ async function distribute(ns, script, needed, target, hosts) {
     // Standard strategy: Fill efficiently.
     for (const host of hosts) {
         if (remaining <= 0) break;
+        if (host === "home") continue; // Skip home for workers
         if (!ns.hasRootAccess(host)) continue;
 
         const maxRam = ns.getServerMaxRam(host);
         const usedRam = ns.getServerUsedRam(host);
         let available = maxRam - usedRam;
-
-        if (host === "home") {
-            available = Math.max(0, available - 10); // Reserve home ram
-        }
 
         if (available < ramCost) continue;
 
@@ -175,6 +175,20 @@ async function distribute(ns, script, needed, target, hosts) {
         }
     }
     return lastPid;
+}
+
+/**
+ * Maximize share power on home with remaining RAM.
+ * Delegated to external script to save Daemon RAM.
+ * @param {NS} ns
+ */
+function manageShare(ns) {
+    // Fire and forget the manager script.
+    // It handles calculation, killing old instances, and maximizing threads.
+    // We use exec to avoid the RAM cost of ns.run()
+    if (ns.getServerMaxRam("home") - ns.getServerUsedRam("home") > 2.0) {
+         ns.exec("/util/start-share.js", "home"); // default 1 thread
+    }
 }
 
 /**

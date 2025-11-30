@@ -8,7 +8,7 @@ export async function main(ns) {
 
     // Define tests: [Script Path, Max RAM]
     const tests = [
-        ["/daemon.js", 6.0],
+        ["/daemon.js", 8.0],
         ["/stages/early.js", 8.0], // Could theoretically go up to 8.0GB, kept at 5.0GB as a warning check.
         ["/util/purchase-server.js", 16.0], // Max RAM for remote execution
         ["/util/upgrade-hacknet.js", 16.0],  // Max RAM for remote execution
