@@ -8,3 +8,9 @@
  * @type {number} 
  */
 export const TICK_RATE_MS = 100;
+
+/**
+ * The interval for running heavy maintenance tasks (spread, deploy, contracts) in the daemon.
+ * @type {number}
+ */
+export const MAINTENANCE_INTERVAL_MS = 60000;

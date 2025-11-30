@@ -33,6 +33,7 @@ export function spread(ns) {
                 port_openers[i](host)
             }
             // Nuke
+            ns.nuke(host);
             ns.tprint(`Nuked '${host}'.`)
             nuked_count++
         }
