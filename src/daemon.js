@@ -36,6 +36,11 @@ _______________________________________________________
 `;
     ns.tprint(guide);
 
+    // --- 1.1 CLEANUP ---
+    // Clear temporary data from previous runs to prevent stale state (e.g. costs)
+    ns.print("Daemon: Clearing /tmp/ directory...");
+    ns.rm("/tmp/", "home", { recursive: true });
+
     // Initial Setup
     ns.print("Daemon: Running initial network spread...");
     while (spread(ns)) await ns.sleep(50);
@@ -66,11 +71,10 @@ async function runEarly(ns) {
 
     while (true) {
         // A. Infrastructure & Expansion
-        const nodes = getAllNodes(ns);
+        const hosts = getAllNodes(ns);
         await delegateInfrastructure(ns, nodes);
 
         // B. Dispatcher Loop
-        const hosts = getAllNodes(ns);
         const target = getBestTarget(ns, hosts);
         
         if (target) {
@@ -157,15 +161,17 @@ function getBestTarget(ns, hosts) {
  * @param {string[]} hosts
  */
 async function delegateInfrastructure(ns, hosts) {
+    
     const RARE_TASK_CHANCE = 0.004; // ~2 mins
+    if (Math.random() > RARE_TASK_CHANCE) {
+        return
+    }
+
+    ns.tprint('running')
 
     // 1. Critical Expansion (Spread & Deploy)
-    if (Math.random() < RARE_TASK_CHANCE) {
-        await runDelegate(ns, '/util/spread.js', hosts);
-    }
-    if (Math.random() < RARE_TASK_CHANCE) {
-        await runDelegate(ns, '/util/deploy-all.js', hosts);
-    }
+    await runDelegate(ns, '/util/spread.js', hosts);
+    await runDelegate(ns, '/util/deploy-all.js', hosts);
 
     // 2. Purchasing
     const serverCost = getCost(ns, 'server') || 55000;
@@ -174,14 +180,13 @@ async function delegateInfrastructure(ns, hosts) {
     }
 
     const hacknetCost = getCost(ns, 'hacknet') || 1000;
+    ns.tprint(`${hacknetCost}`)
     if (ns.getServerMoneyAvailable("home") > hacknetCost) {
          await runDelegate(ns, '/util/upgrade-hacknet.js', hosts);
     }
 
     // 3. Contracts
-    if (Math.random() < RARE_TASK_CHANCE) {
-         await runDelegate(ns, '/util/solve-contracts.js', hosts);
-    }
+    await runDelegate(ns, '/util/solve-contracts.js', hosts);
 }
 
 async function runDelegate(ns, script, hosts) {
