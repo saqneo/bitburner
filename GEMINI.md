@@ -51,8 +51,7 @@
 s.getScriptRam) to ensure they fit within early-game RAM constraints (e.g., daemon.js < 3GB, early.js < 5GB).
 
 ## Development Workflow
-1.  **Start:** Run 
-pm run start or ./start_dev.ps1 to start the file watcher.
-2.  **Linting:** Code is linted via ESLint (Loose configuration) to catch syntax errors without blocking 
-s usage.
-3.  **Documentation:** Update this file as architectural decisions are made.
+1.  **Start:** Run `npm run start` or `./start_dev.ps1` to start the file watcher.
+2.  **Linting:** Code is linted via ESLint (Loose configuration) to catch syntax errors without blocking `ns` usage.
+3.  **Commit Protocol:** Before *every* commit, read `.gemini/pre-commit.md`. This is mandatory to ensure all files are staged and messages are accurate.
+4.  **Documentation:** Update this file as architectural decisions are made.
