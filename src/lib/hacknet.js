@@ -13,7 +13,7 @@ import { updateCost } from '/lib/cost.js';
  */
 export async function manageHacknet(ns) {
     const money = ns.getServerMoneyAvailable("home");
-    const budget = money * 0.25; // Use 2% of available money for hacknet
+    const budget = money * 0.001;
 
     let bestUpgrade = { type: 'none', node: -1, cost: Infinity };
 
@@ -34,13 +34,13 @@ export async function manageHacknet(ns) {
 
         // Upgrade RAM
         const ramCost = ns.hacknet.getRamUpgradeCost(i, 1);
-        if (ramCost < bestUpgrade.cost && ramCost <= budget) {
+        if (ramCost < bestUpgrade.cost && ramCost <= budget*6) {
             bestUpgrade = { type: 'ram', node: i, cost: ramCost };
         }
 
         // Upgrade Cores
         const coreCost = ns.hacknet.getCoreUpgradeCost(i, 1);
-        if (coreCost < bestUpgrade.cost && coreCost <= budget) {
+        if (coreCost < bestUpgrade.cost && coreCost <= budget*100) {
             bestUpgrade = { type: 'core', node: i, cost: coreCost };
         }
     }
