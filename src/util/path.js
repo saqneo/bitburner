@@ -33,7 +33,7 @@ export async function main(ns) {
     // 'home' is usually the starting point for terminal usage, but if running from elsewhere,
     // the connect string logic still holds relative to current.
     // Note: The first element is the current node, so we skip it for the connect string.
-    const connectString = path.slice(1).map(node => `connect ${node}`).join("; ");
+    const connectString = path.slice(1).map(node => `c ${node}`).join("; ");
     
     ns.tprint(`\n\u001b[32m${connectString};\u001b[0m\n`);
     

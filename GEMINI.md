@@ -17,6 +17,7 @@
 8.  **Commit Standards:** Adhere to [Conventional Commits](https://www.conventionalcommits.org/). 
     *   **Type:** Reflect the most significant change (e.g., use `feat`/`fix` over `docs` if code changed).
     *   **Message:** Summarize the impact of changes across affected components. Listing every file is not required, but key changes must be noted.
+    *   **Context Awareness:** Describe the *net result* of the staged changes relative to the previous commit (`HEAD`), not the step-by-step iteration process used to get there. For example, if you create a file and then fix a bug in it before the first commit, the message should be "Add [file]" with a description of its features, *not* "Fix bug in [file]".
 
 ## Automation Architecture
 **State Machine Pattern:** The automation is structured as a series of sequential "Stages" (scripts) that handle specific phases of the game. This uses a **Cyclic Handoff** model to maximize RAM efficiency (Daemon and Stage are never running simultaneously).
