@@ -174,8 +174,14 @@ export function uniquePaths(ns, data) {
 
 export function waysToSum(ns, data) {
     let target, nums;
-    if (Array.isArray(data)) { target = data[0]; nums = data[1]; }
-    else { target = data; nums = Array.from({length: target - 1}, (_, i) => i + 1); }
+    if (Array.isArray(data)) { 
+        target = data[0]; 
+        nums = data[1]; 
+        if (Array.isArray(target)) target = target[0];
+    } else { 
+        target = data; 
+        nums = Array.from({length: target - 1}, (_, i) => i + 1); 
+    }
     const dp = new Array(target + 1).fill(0);
     dp[0] = 1;
     for (const n of nums) {
@@ -183,7 +189,7 @@ export function waysToSum(ns, data) {
             dp[i] += dp[i - n];
         }
     }
-    return Array.isArray(data) ? dp[target] : dp[target];
+    return dp[target];
 }
 
 export function largestPrimeFactor(ns, data) {
