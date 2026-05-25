@@ -38,7 +38,15 @@ export async function main(ns) {
     {name: 'stockTraderII.2', func: libcontract.stockTraderII, data: [1, 2, 3, 4, 5], solution: 4},
     {name: 'vigenere.1', func: libcontract.vigenere, data: ['ATTACKATDAWN', 'LEMON'], solution: 'LXFOPVEOFMYR'},
     {name: 'rleCompress.1', func: libcontract.rleCompress, data: 'AAAAABBBCC', solution: '5A3B2C'},
-    {name: 'rleCompress.2', func: libcontract.rleCompress, data: 'AAAAAAAAAAAAABB', solution: '9A4A2B'}
+    {name: 'rleCompress.2', func: libcontract.rleCompress, data: 'AAAAAAAAAAAAABB', solution: '9A4A2B'},
+    {name: 'stockTraderIII.1', func: libcontract.stockTraderIII, data: [3, 2, 6, 5, 0, 3], solution: 7},
+    {name: 'stockTraderIV.1', func: libcontract.stockTraderIV, data: [2, [3, 2, 6, 5, 0, 3]], solution: 7},
+    {name: 'arrayJumpingII.1', func: libcontract.arrayJumpingII, data: [2, 3, 1, 1, 4], solution: 2},
+    {name: 'arrayJumpingII.2', func: libcontract.arrayJumpingII, data: [3, 2, 1, 0, 4], solution: 0},
+    {name: 'squareRoot.1', func: libcontract.squareRoot, data: '10', solution: '3'},
+    {name: 'squareRoot.2', func: libcontract.squareRoot, data: '14', solution: '4'},
+    {name: 'squareRoot.3', func: libcontract.squareRoot, data: '15241578780673809228807530631682705574548074983058869151240375', solution: '123456789012345678901234567890'},
+    {name: 'shortestPathInGrid.1', func: libcontract.shortestPathInGrid, data: [[0, 1, 0], [0, 0, 0], [1, 1, 0]], solution: 'DRRD'}
   ]
   tests.forEach((test) => { runTest(ns, test) })
 }

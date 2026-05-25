@@ -90,9 +90,14 @@ function getContractSolver(type) {
     case 'Merge Overlapping Intervals': return mergeIntervals;
     case 'Array Jumping Game':
     case 'Array Jumping Game I': return arrayJumpingI;
+    case 'Array Jumping Game II': return arrayJumpingII;
     case 'Algorithmic Stock Trader I': return stockTraderI;
     case 'Algorithmic Stock Trader II': return stockTraderII;
+    case 'Algorithmic Stock Trader III': return stockTraderIII;
+    case 'Algorithmic Stock Trader IV': return stockTraderIV;
     case 'Compression I: RLE Compression': return rleCompress;
+    case 'Square Root': return squareRoot;
+    case 'Shortest Path in a Grid': return shortestPathInGrid;
     default: return null;
   }
 }
@@ -297,4 +302,103 @@ export function rleCompress(ns, data) {
   }
   result += count + currentChar;
   return result;
+}
+
+export function stockTraderIII(ns, data) {
+  return stockTraderIV(ns, [2, data]);
+}
+
+export function stockTraderIV(ns, data) {
+  const k = data[0];
+  const prices = data[1];
+  if (prices.length < 2) return 0;
+  if (k >= prices.length / 2) {
+    let profit = 0;
+    for (let i = 1; i < prices.length; i++) {
+      if (prices[i] > prices[i - 1]) profit += prices[i] - prices[i - 1];
+    }
+    return profit;
+  }
+  const buy = new Array(k + 1).fill(-Infinity);
+  const sell = new Array(k + 1).fill(0);
+  for (const price of prices) {
+    for (let i = 1; i <= k; i++) {
+      buy[i] = Math.max(buy[i], sell[i - 1] - price);
+      sell[i] = Math.max(sell[i], buy[i] + price);
+    }
+  }
+  return sell[k];
+}
+
+export function arrayJumpingII(ns, data) {
+  if (data.length <= 1) return 0;
+  let jumps = 0;
+  let currentEnd = 0;
+  let farthest = 0;
+  for (let i = 0; i < data.length - 1; i++) {
+    farthest = Math.max(farthest, i + data[i]);
+    if (i === currentEnd) {
+      jumps++;
+      currentEnd = farthest;
+      if (currentEnd >= data.length - 1) break;
+    }
+    if (i >= farthest) return 0;
+  }
+  return currentEnd >= data.length - 1 ? jumps : 0;
+}
+
+export function squareRoot(ns, data) {
+  const target = BigInt(data);
+  if (target < 0n) return "0";
+  if (target === 0n || target === 1n) return target.toString();
+  let low = 1n;
+  let high = target / 2n;
+  let root = 0n;
+  while (low <= high) {
+    const mid = (low + high) / 2n;
+    const sq = mid * mid;
+    if (sq === target) {
+      root = mid;
+      break;
+    } else if (sq < target) {
+      root = mid;
+      low = mid + 1n;
+    } else {
+      high = mid - 1n;
+    }
+  }
+  const root1 = root + 1n;
+  const diffRoot = target - root * root;
+  const diffRoot1 = root1 * root1 - target;
+  const closest = diffRoot <= diffRoot1 ? root : root1;
+  return closest.toString();
+}
+
+export function shortestPathInGrid(ns, data) {
+  const grid = data;
+  const rows = grid.length;
+  const cols = grid[0].length;
+  if (grid[0][0] === 1 || grid[rows - 1][cols - 1] === 1) return "";
+  const queue = [[0, 0, ""]];
+  const visited = Array.from({ length: rows }, () => new Array(cols).fill(false));
+  visited[0][0] = true;
+  const directions = [
+    [1, 0, "D"],
+    [-1, 0, "U"],
+    [0, 1, "R"],
+    [0, -1, "L"]
+  ];
+  while (queue.length > 0) {
+    const [r, c, path] = queue.shift();
+    if (r === rows - 1 && c === cols - 1) return path;
+    for (const [dr, dc, move] of directions) {
+      const nr = r + dr;
+      const nc = c + dc;
+      if (nr >= 0 && nr < rows && nc >= 0 && nc < cols && grid[nr][nc] === 0 && !visited[nr][nc]) {
+        visited[nr][nc] = true;
+        queue.push([nr, nc, path + move]);
+      }
+    }
+  }
+  return "";
 }
