@@ -9,7 +9,7 @@
 ## Architectural Guidelines
 1.  **NS2 Standards:** Use `async/await` and `ns` handle. Adhere strictly to `index.d.ts` for type safety. Verify function RAM costs/availability.
 2.  **Modularity:** Encapsulate logic in `src/lib/` or feature folders.
-3.  **RAM Efficiency:** General scripts must be lightweight. Avoid `ns.singularity` in persistent scripts unless necessary.
+3.  **RAM Efficiency:** General scripts must be lightweight. Avoid `ns.singularity` in persistent scripts unless necessary. For a complete list of Netscript function RAM costs, reference `netscript_ram_costs.md`.
 4.  **Legacy Code:** Archived scripts in `src/.old/` are for reference only and excluded from sync.
 5.  **Logging:** Use `ns.print` for internal logs. Use `ns.tprint` *only* for critical alerts or CLI output.
 6.  **Daemon Pattern:** `src/daemon.js` is a lightweight **orchestrator**. Abstract logic to libraries (`src/lib/target-analysis.js`). Offload heavy tasks to transient scripts (`src/util/`).

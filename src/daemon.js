@@ -1,5 +1,5 @@
 import { getAllNodes } from '/lib/map.js';
-import { checkTransition } from '/lib/progression.js';
+import { checkTransition, getStartupStage } from '/lib/progression.js';
 import { getCost } from '/lib/cost.js';
 import { spread } from '/lib/spread.js';
 import { getRankedTargets, getNextAction } from '/lib/target-analysis.js';
@@ -10,32 +10,7 @@ export async function main(ns) {
     ns.disableLog("ALL");
 
     // --- 1. BOOTSTRAP ---
-    const guide = `
-
-_______________________________________________________
-|            RECOVERY PROTOCOL: EARLY GAME            |
-|_____________________________________________________|
-| 1. [TRAVEL]   :: Go to Chongqing, New Tokyo, or     |
-|                  Ishima immediately.                |
-| 2. [FACTION]  :: Join Tian Di Hui (Req: H:50, $1m). |
-| 3. [BACKDOOR] :: Crack & Backdoor immediately:      |
-|                  -> 'CSEC' (CyberSec)               |
-|                  -> 'avmnite-02h' (NiteSec)         |
-|-----------------------------------------------------|
-|            SHOPPING LIST (PRIORITY ORDER)           |
-|-----------------------------------------------------|
-| 1. Neuroreceptor Manager (TDH) :: [Auto-Focus Work] |
-| 2. Social Neg. Asst (TDH)      :: [Rep Gain +15%]   |
-| 3. ADR-V1 Gene (TDH)           :: [Rep Gain +10%]   |
-| 4. Cranial Signal Proc (CSEC)  :: [Hack Speed/Power]|
-| 5. BitWire (CSEC/NiteSec)      :: [Hack Skill]      |
-|-----------------------------------------------------|
-| 4. [ACTION]   :: Work 'Hacking Contracts' for TDH.  |
-|                  Solve .cct files for Rep bursts.   |
-| 5. [SYSTEM]   :: REMINDER: Run 'buyAll' alias!      |
-|_____________________________________________________|
-`;
-    ns.tprint(guide);
+    ns.tprint("Daemon: Boot sequence started. Run 'help.js' (alias: h) for the recovery guide and system usage.");
 
     // --- 1.1 CLEANUP ---
     // Clear temporary data from previous runs to prevent stale state (e.g. costs)
@@ -49,7 +24,7 @@ _______________________________________________________
     // Initial Setup
     ns.print("Daemon: Running initial network spread...");
     while (spread(ns)) await ns.sleep(50);
-    
+
     // Offload heavy maintenance tasks (cleanup, deploy) to the network to save RAM on home/daemon.
     // These will run on any available node (e.g., n00dles).
     ns.print("Daemon: Delegating cleanup and deployment...");
@@ -58,17 +33,19 @@ _______________________________________________________
     await runDelegate(ns, '/util/deploy-all.js', nodes);
 
     // --- 2. MAIN LOOP ---
-    while (true) {
-        const state = readState(ns);
+    let stage = getStartupStage(ns);
+    ns.tprint(`Daemon: Startup Stage determined as '${stage}'.`);
 
-        if (state === "early") {
-            await runEarly(ns);
+    while (true) {
+        if (stage === "early") {
+            const next = await runEarly(ns);
+            if (next) stage = next;
         } else {
-            ns.tprint(`Daemon: Transition to stage '${state}' requested.`);
+            ns.tprint(`Daemon: Transition to stage '${stage}' requested.`);
             ns.tprint("CRITICAL: Auto-spawn removed to save RAM. Please run the next stage script manually.");
             return; // Exit to allow manual start
         }
-        
+
         await ns.sleep(100);
     }
 }
@@ -76,14 +53,14 @@ _______________________________________________________
 /** @param {NS} ns */
 async function runEarly(ns) {
     ns.print("Stage: EARLY GAME Controller active.");
-    
+
     const tracked = new Map(); // target -> pid
     let nextMaintenance = 0;
 
     while (true) {
         const hosts = getAllNodes(ns);
         const targets = getRankedTargets(ns, hosts);
-        
+
         // Infrastructure: Run periodically (every 1 minute)
         if (Date.now() > nextMaintenance) {
             await delegateInfrastructure(ns, hosts);
@@ -115,10 +92,9 @@ async function runEarly(ns) {
         const nextStage = checkTransition(ns, "early");
         if (nextStage) {
             ns.tprint(`SUCCESS: Early Game Goals Met. Transitioning to '${nextStage}'.`);
-            ns.write("/data/state.txt", nextStage, "w");
-            return; 
+            return nextStage;
         }
-        
+
         // D. Utilize Remaining Home RAM for Sharing
         manageShare(ns);
 
@@ -126,14 +102,7 @@ async function runEarly(ns) {
     }
 }
 
-function readState(ns) {
-    const STATE_FILE = "/data/state.txt";
-    if (ns.fileExists(STATE_FILE)) {
-        const content = ns.read(STATE_FILE).trim();
-        return content || "early";
-    }
-    return "early";
-}
+// readState function removed as it is no longer used.
 
 /**
  * Distributes threads of a script across available hosts.
@@ -187,7 +156,7 @@ function manageShare(ns) {
     // It handles calculation, killing old instances, and maximizing threads.
     // We use exec to avoid the RAM cost of ns.run()
     if (ns.getServerMaxRam("home") - ns.getServerUsedRam("home") > 2.0) {
-         ns.exec("/util/start-share.js", "home"); // default 1 thread
+        ns.exec("/util/start-share.js", "home"); // default 1 thread
     }
 }
 
@@ -197,12 +166,23 @@ function manageShare(ns) {
  * @param {string[]} hosts
  */
 async function delegateInfrastructure(ns, hosts) {
-    ns.print("Daemon: Triggering periodic maintenance (Spread/Deploy/Contracts)...");
+    ns.print("Daemon: Triggering periodic maintenance (Contracts/Spread/Deploy)...");
+
+    // 1. Solve Contracts FIRST (Cluster-wide)
+    // By running this first, it gets 'first pick' of available RAM on rooted nodes.
+    const pid = await runDelegate(ns, '/util/solve-contracts.js', hosts);
+    if (pid > 0) {
+        // We poll for completion because ns.exec is fire-and-forget.
+        // We need the contract cash to be IN the wallet before the purchasing logic checks affordability.
+        ns.print("Daemon: Waiting for cluster to finish contract solving...");
+        while (ns.isRunning(pid)) await ns.sleep(100);
+    }
+
+    // 2. Network Maintenance
     await runDelegate(ns, '/util/spread.js', hosts);
     await runDelegate(ns, '/util/deploy-all.js', hosts);
-    await runDelegate(ns, '/util/solve-contracts.js', hosts);
 
-    // 2. Purchasing (Always check if affordable)
+    // 3. Purchasing (Uses cash, potentially from step 1)
     const serverCost = getCost(ns, 'server') || 55000;
     if (ns.getServerMoneyAvailable("home") > serverCost) {
         await runDelegate(ns, '/util/purchase-server.js', hosts);
@@ -210,18 +190,19 @@ async function delegateInfrastructure(ns, hosts) {
 
     const hacknetCost = getCost(ns, 'hacknet') || 1000;
     if (ns.getServerMoneyAvailable("home") > hacknetCost) {
-         await runDelegate(ns, '/util/upgrade-hacknet.js', hosts);
+        await runDelegate(ns, '/util/upgrade-hacknet.js', hosts);
     }
 }
 
 async function runDelegate(ns, script, hosts) {
     const ram = ns.getScriptRam(script);
     for (const host of hosts) {
-        if (ns.isRunning(script, host)) return;
-        
+        if (ns.isRunning(script, host)) return 0;
+
         if (ns.hasRootAccess(host) && (ns.getServerMaxRam(host) - ns.getServerUsedRam(host)) >= ram) {
-             ns.exec(script, host, 1);
-             return;
+            const pid = ns.exec(script, host, 1);
+            return pid;
         }
     }
+    return 0;
 }

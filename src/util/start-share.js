@@ -1,7 +1,7 @@
 /** @param {NS} ns */
 export async function main(ns) {
     const SHARE_SCRIPT = "/util/share.js";
-    const RAM_BUFFER = 32; // Keep 32GB free for other operations/daemon
+    const RAM_BUFFER = 24; // Keep 24GB free for other operations/daemon and daemon itself (approx 8GB)
     const SCRIPT_COST = ns.getScriptRam(SHARE_SCRIPT);
 
     // 1. Calculate available RAM

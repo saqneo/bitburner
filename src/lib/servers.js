@@ -11,8 +11,8 @@ import { updateCost } from '/lib/cost.js';
  * @returns {Promise<boolean>} - True if a server was bought or upgraded, false otherwise.
  */
 export async function manageServers(ns) {
-    const maxServers = ns.getPurchasedServerLimit();
-    const myServers = ns.getPurchasedServers();
+    const maxServers = ns.cloud.getServerLimit();
+    const myServers = ns.cloud.getServerNames();
     const money = ns.getServerMoneyAvailable("home");
     const budget = money * 0.5; // Use 50% of available money for server infrastructure
 
@@ -23,7 +23,7 @@ export async function manageServers(ns) {
         // Check for affordable servers, from 1PB down to 8GB
         for (let i = 20; i >= 3; i--) { 
             const ram = 2 ** i;
-            const cost = ns.getPurchasedServerCost(ram);
+            const cost = ns.cloud.getServerCost(ram);
             if (cost <= budget) {
                 bestRam = ram;
                 bestCost = cost;
@@ -32,9 +32,9 @@ export async function manageServers(ns) {
         }
         
         if (bestRam > 0) {
-            const hostname = ns.purchaseServer(`owned-${myServers.length}`, bestRam);
+            const hostname = ns.cloud.purchaseServer(`owned-${myServers.length}`, bestRam);
             if (hostname) {
-                ns.tprint(`SUCCESS: Purchased new server: ${hostname} (${ns.formatRam(bestRam)})`);
+                ns.tprint(`SUCCESS: Purchased new server: ${hostname} (${ns.format.ram(bestRam)})`);
                 await updateCost(ns, 'server', bestCost);
                 return true;
             }
@@ -50,7 +50,7 @@ export async function manageServers(ns) {
         if (currentRam >= maxRam) continue;
 
         const nextRam = currentRam * 2;
-        const cost = ns.getPurchasedServerUpgradeCost(server, nextRam);
+        const cost = ns.cloud.getServerUpgradeCost(server, nextRam);
 
         if (cost <= budget) {
             const ratio = (nextRam - currentRam) / cost; // RAM gain per dollar
@@ -61,8 +61,8 @@ export async function manageServers(ns) {
     }
 
     if (bestUpgrade.server) {
-        if (ns.upgradePurchasedServer(bestUpgrade.server, bestUpgrade.ram)) {
-            ns.tprint(`SUCCESS: Upgraded server ${bestUpgrade.server} to ${ns.formatRam(bestUpgrade.ram)}.`);
+        if (ns.cloud.upgradeServer(bestUpgrade.server, bestUpgrade.ram)) {
+            ns.tprint(`SUCCESS: Upgraded server ${bestUpgrade.server} to ${ns.format.ram(bestUpgrade.ram)}.`);
             await updateCost(ns, 'server', bestUpgrade.cost);
             return true;
         }

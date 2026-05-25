@@ -13,9 +13,10 @@ export function checkTransition(ns, currentStage) {
         case "early":
             // Transition to 'midgame' when we have at least 1TB (1024GB) of RAM.
             // This ensures we have enough capacity for batchers or heavier logic.
-            if (maxRam >= 1024) {
-                return "midgame";
-            }
+            // Temporarily disabled until midgame script is ready.
+            // if (maxRam >= 1024) {
+            //     return "midgame";
+            // }
             break;
         
         case "midgame":
@@ -28,4 +29,19 @@ export function checkTransition(ns, currentStage) {
             return null;
     }
     return null;
+}
+
+/**
+ * Evaluates the correct starting stage based on current stats.
+ * Used by Daemon on startup to avoid needing state files.
+ * @param {NS} ns 
+ * @returns {string}
+ */
+export function getStartupStage(ns) {
+    // const maxRam = ns.getServerMaxRam("home");
+    
+    // Logic to determine stage:
+    // if (maxRam >= 1024) return "midgame"; // Disabled for now
+    
+    return "early";
 }

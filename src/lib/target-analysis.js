@@ -37,26 +37,39 @@ export function getRankedTargets(ns, hosts) {
  * @returns {{script: string, threads: number}|null}
  */
 export function getNextAction(ns, target) {
-    const sec = ns.getServerSecurityLevel(target);
-    const minSec = ns.getServerMinSecurityLevel(target);
-    const money = ns.getServerMoneyAvailable(target);
-    const maxMoney = ns.getServerMaxMoney(target);
+    const server = ns.getServer(target);
+    const sec = server.hackDifficulty;
+    const minSec = server.minDifficulty;
+    const money = server.moneyAvailable;
+    const maxMoney = server.moneyMax;
 
-    if (sec > minSec + 2) { // Allow small buffer
-        return { script: "/hack/weaken.js", threads: Infinity };
-    } else if (money < maxMoney * 0.95) {
-        return { script: "/hack/grow.js", threads: Infinity };
-    } else {
-        // Hack 20% of CURRENT money (or max). 
-        // hackAnalyze returns percent per thread (e.g., 0.001 for 0.1%)
-        const percentPerThread = ns.hackAnalyze(target);
-        if (percentPerThread > 0) {
-            // Cap Hack to 20% to preserve longevity
-            const threads = Math.floor(0.20 / percentPerThread);
-            if (threads > 0) {
-                return { script: "/hack/hack.js", threads: threads };
-            }
+    // A. WEAKEN: If security is too high, prioritize weakening.
+    // 0.05 is the amount one thread reduces security by.
+    if (sec > minSec + 0.1) { 
+        const amountToReduce = sec - minSec;
+        const threadsNeeded = Math.ceil(amountToReduce / 0.05);
+        return { script: "/hack/weaken.js", threads: threadsNeeded };
+    } 
+
+    // B. GROW: If money is low, prioritize growing.
+    if (money < maxMoney * 0.90) {
+        // Calculate required multiplier to reach 100% money.
+        // We use a small safety margin of 1.1x.
+        const multiplier = maxMoney / Math.max(money, 1);
+        const threadsNeeded = Math.ceil(ns.growthAnalyze(target, multiplier));
+        return { script: "/hack/grow.js", threads: threadsNeeded };
+    }
+
+    // C. HACK: If security is low and money is high, perform a hack.
+    // Hack 20% of CURRENT money.
+    const percentPerThread = ns.hackAnalyze(target);
+    if (percentPerThread > 0) {
+        // Cap Hack to 20% to preserve target sustainability.
+        const threads = Math.floor(0.20 / percentPerThread);
+        if (threads > 0) {
+            return { script: "/hack/hack.js", threads: threads };
         }
     }
+
     return null;
 }
