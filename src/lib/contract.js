@@ -18,7 +18,7 @@ export function solveContracts(ns) {
 
     for (const contract of contracts) {
       const type = ns.codingcontract.getContractType(contract, node);
-      const result = executeContract(ns, contract, node);
+      const result = executeContract(ns, contract, node, type);
 
       if (result) {
         solvedCount++;
@@ -46,8 +46,8 @@ export function solveContracts(ns) {
 }
 
 /** @param {NS} ns */
-export function executeContract(ns, contractFile, host) {
-  const solver = getContractSolver(ns, contractFile, host);
+export function executeContract(ns, contractFile, host, type) {
+  const solver = getContractSolver(type);
   if (!solver) return false;
 
   const contractData = ns.codingcontract.getData(contractFile, host);
@@ -62,20 +62,19 @@ export function executeContract(ns, contractFile, host) {
   const reward = ns.codingcontract.attempt(solution, contractFile, host);
   
   if (reward) {
-    ns.tprint(`SUCCESS: Solved "${ns.codingcontract.getContractType(contractFile, host)}" on ${host}. Reward: ${reward}`);
+    ns.tprint(`SUCCESS: Solved "${type}" on ${host}. Reward: ${reward}`);
     return true;
   } else {
     // Failure detail goes to logs to avoid terminal spam
     ns.print(`FAILURE: Failed ${contractFile} on ${host}.
-  Type: ${ns.codingcontract.getContractType(contractFile, host)}
+  Type: ${type}
   Data: ${JSON.stringify(contractData)}
   Solution: ${JSON.stringify(solution)}`);
     return false;
   }
 }
 
-function getContractSolver(ns, contractFile, host) {
-  const type = ns.codingcontract.getContractType(contractFile, host);
+function getContractSolver(type) {
   switch (type) {
     case 'Encryption I: Caesar Cipher': return caesar;
     case 'Find Largest Prime Factor': return largestPrimeFactor;
