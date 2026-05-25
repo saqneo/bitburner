@@ -77,6 +77,7 @@ export function executeContract(ns, contractFile, host, type) {
 function getContractSolver(type) {
   switch (type) {
     case 'Encryption I: Caesar Cipher': return caesar;
+    case 'Encryption II: Vigenère Cipher': return vigenere;
     case 'Find Largest Prime Factor': return largestPrimeFactor;
     case 'Generate IP Addresses': return generateIp;
     case 'Spiralize Matrix': return spiralize;
@@ -87,7 +88,11 @@ function getContractSolver(type) {
     case 'Total Ways to Sum II': return waysToSum;
     case 'Minimum Path Sum in a Triangle': return minPathSumTriangle;
     case 'Merge Overlapping Intervals': return mergeIntervals;
+    case 'Array Jumping Game':
     case 'Array Jumping Game I': return arrayJumpingI;
+    case 'Algorithmic Stock Trader I': return stockTraderI;
+    case 'Algorithmic Stock Trader II': return stockTraderII;
+    case 'Compression I: RLE Compression': return rleCompress;
     default: return null;
   }
 }
@@ -233,4 +238,63 @@ export function spiralize(ns, data) {
     }
   }
   return res;
+}
+
+export function stockTraderI(ns, data) {
+  let minPrice = Infinity;
+  let maxProfit = 0;
+  for (const price of data) {
+    if (price < minPrice) {
+      minPrice = price;
+    } else {
+      maxProfit = Math.max(maxProfit, price - minPrice);
+    }
+  }
+  return maxProfit;
+}
+
+export function stockTraderII(ns, data) {
+  let profit = 0;
+  for (let i = 1; i < data.length; i++) {
+    if (data[i] > data[i - 1]) {
+      profit += data[i] - data[i - 1];
+    }
+  }
+  return profit;
+}
+
+export function vigenere(ns, data) {
+  const [text, key] = data;
+  let result = '';
+  let keyIndex = 0;
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    const code = char.charCodeAt(0);
+    if (code >= 65 && code <= 90) {
+      const shift = key[keyIndex % key.length].charCodeAt(0) - 65;
+      result += String.fromCharCode(((code - 65 + shift) % 26) + 65);
+      keyIndex++;
+    } else {
+      result += char;
+    }
+  }
+  return result;
+}
+
+export function rleCompress(ns, data) {
+  if (!data) return '';
+  let result = '';
+  let currentChar = data[0];
+  let count = 1;
+  for (let i = 1; i < data.length; i++) {
+    if (data[i] === currentChar && count < 9) {
+      count++;
+    } else {
+      result += count + currentChar;
+      currentChar = data[i];
+      count = 1;
+    }
+  }
+  result += count + currentChar;
+  return result;
 }
