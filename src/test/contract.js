@@ -31,7 +31,14 @@ export async function main(ns) {
     {name: 'generateIp.2', func: libcontract.generateIp, data: '1938718066', solution: ['193.87.180.66']},
     {name: 'caesar.1', func: libcontract.caesar, data: ['BANANAS', 3], solution: 'YXKXKXP'},
     {name: 'caesar.2', func: libcontract.caesar, data: ['INBOX FLASH VIRUS SHIFT POPUP', 3], solution: 'FKYLU CIXPE SFORP PEFCQ MLMRM'},
-    {name: 'spiralize.2', func: libcontract.spiralize, data: [[1, 2, 3, 4], [5, 6, 7, 8], [9, 10, 11, 12]], solution: [1, 2, 3, 4, 8, 12, 11, 10, 9, 5, 6, 7]}
+    {name: 'spiralize.2', func: libcontract.spiralize, data: [[1, 2, 3, 4], [5, 6, 7, 8], [9, 10, 11, 12]], solution: [1, 2, 3, 4, 8, 12, 11, 10, 9, 5, 6, 7]},
+    {name: 'stockTraderI.1', func: libcontract.stockTraderI, data: [7, 1, 5, 3, 6, 4], solution: 5},
+    {name: 'stockTraderI.2', func: libcontract.stockTraderI, data: [7, 6, 4, 3, 1], solution: 0},
+    {name: 'stockTraderII.1', func: libcontract.stockTraderII, data: [7, 1, 5, 3, 6, 4], solution: 7},
+    {name: 'stockTraderII.2', func: libcontract.stockTraderII, data: [1, 2, 3, 4, 5], solution: 4},
+    {name: 'vigenere.1', func: libcontract.vigenere, data: ['ATTACKATDAWN', 'LEMON'], solution: 'LXFOPVEOFMYR'},
+    {name: 'rleCompress.1', func: libcontract.rleCompress, data: 'AAAAABBBCC', solution: '5A3B2C'},
+    {name: 'rleCompress.2', func: libcontract.rleCompress, data: 'AAAAAAAAAAAAABB', solution: '9A4A2B'}
   ]
   tests.forEach((test) => { runTest(ns, test) })
 }
