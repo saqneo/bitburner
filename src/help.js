@@ -41,6 +41,7 @@ export async function main(ns) {
         `|${pad(" Ext. Sync:     Run 'npm run start' in OS terminal to sync files.               ", 80)}|`,
         `|${pad(" Start Daemon:  run /daemon.js (alias: d)                                       ", 80)}|`,
         `|${pad(" Start HUD:     run /monitor.js (alias: m)                                      ", 80)}|`,
+        `|${pad(" Start Stocks:  run /util/stock-trader.js                                       ", 80)}|`,
         `|${pad("                                                                                ", 80)}|`,
         `|${pad(" The HUD (/monitor.js) tracks the active swarm in real-time. It detects which   ", 80)}|`,
         `|${pad(" target has the most active worker threads and displays its live status.        ", 80)}|`,
