@@ -13,6 +13,12 @@ export async function main(ns) {
     ns.tprint("Daemon: Boot sequence started. Run 'help.js' (alias: h) for the recovery guide and system usage.");
     ns.tprint("Daemon: Stages: EARLY (serial, <1TB home) → MIDGAME (concurrent batcher, ≥1TB home).");
 
+    // Launch stock trader startup helper (transient execution to keep daemon RAM at 0GB extra footprint)
+    ns.exec("/util/start-stock-trader.js", "home", 1);
+
+    // Launch System Monitor HUD (silently fails if already running, keeping daemon RAM at 0GB extra footprint)
+    ns.exec("/monitor.js", "home", 1);
+
     // --- 1.1 CLEANUP ---
     // Clear temporary data from previous runs to prevent stale state (e.g. costs)
     ns.print("Daemon: Clearing /tmp/ directory...");

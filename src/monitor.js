@@ -4,7 +4,10 @@ import { getStartupStage } from '/lib/progression.js';
 /** @param {NS} ns */
 export async function main(ns) {
     ns.disableLog("ALL");
-    ns.ui.openTail(); // Open the custom log window
+    ns.ui.openTail();
+    ns.ui.setTailTitle("System Monitor HUD");
+    ns.ui.resizeTail(750, 450);
+    ns.ui.moveTail(250, 80);
     
     ns.print("Initializing System Monitor...");
 

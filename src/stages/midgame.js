@@ -15,6 +15,9 @@ export async function main(ns) {
     ns.print("Stage: MID GAME started.");
     ns.tprint("Mid Game Stage Loaded.");
 
+    // Launch stock trader startup helper (transient execution to keep midgame RAM at 0GB extra footprint)
+    ns.exec("/util/start-stock-trader.js", "home", 1);
+
     const activeBatches = new Map(); // target -> [weaken_pids]
     const targetStates = new Map();  // target -> "prep" | "harvest"
     const lastLaunchTimes = new Map(); // target -> timestamp

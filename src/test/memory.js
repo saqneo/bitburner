@@ -11,7 +11,9 @@ export async function main(ns) {
         ["/daemon.js", 8.0],
         ["/util/purchase-server.js", 16.0], // Max RAM for remote execution
         ["/util/upgrade-hacknet.js", 16.0],  // Max RAM for remote execution
-        ["/util/solve-contracts.js", 32.0]  // Heavier script, requires more RAM
+        ["/util/solve-contracts.js", 32.0], // Heavier script, requires more RAM
+        ["/util/stock-trader.js", 20.0],    // Uses TIX and stock transaction APIs (Long Only)
+        ["/util/start-stock-trader.js", 8.0] // Transient stock trader boot check helper (includes purchase APIs)
     ];
 
     for (const [script, limit] of tests) {
