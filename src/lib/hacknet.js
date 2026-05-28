@@ -13,62 +13,95 @@ import { updateCost } from '/lib/cost.js';
  */
 export async function manageHacknet(ns) {
     const money = ns.getServerMoneyAvailable("home");
-    const budget = money * 0.001;
+    // Spend up to 5% of our current money as our total budget for this iteration.
+    // If we are super rich, we can purchase many upgrades at once.
+    let remainingBudget = money * 0.05;
+    let upgradedAny = false;
 
-    let bestUpgrade = { type: 'none', node: -1, cost: Infinity };
+    // Use a safety counter to avoid any infinite loop scenarios
+    let loopSafety = 0;
+    const maxUpgradesPerCycle = 1000;
 
-    // --- 1. Evaluate purchasing a new node ---
-    const purchaseCost = ns.hacknet.getPurchaseNodeCost();
-    if (purchaseCost < bestUpgrade.cost && purchaseCost <= budget) {
-        bestUpgrade = { type: 'purchase', cost: purchaseCost };
-    }
+    while (remainingBudget > 0 && loopSafety < maxUpgradesPerCycle) {
+        loopSafety++;
+        let bestUpgrade = { type: 'none', node: -1, cost: Infinity };
+        const currentMoney = ns.getServerMoneyAvailable("home");
+        // We cannot spend more than we have or what remains of our budget
+        const limit = Math.min(remainingBudget, currentMoney);
 
-    // --- 2. Evaluate upgrading existing nodes ---
-    const numNodes = ns.hacknet.numNodes();
-    for (let i = 0; i < numNodes; i++) {
-        // Upgrade Level
-        const levelCost = ns.hacknet.getLevelUpgradeCost(i, 1);
-        if (levelCost < bestUpgrade.cost && levelCost <= budget) {
-            bestUpgrade = { type: 'level', node: i, cost: levelCost };
+        // --- 1. Evaluate purchasing a new node ---
+        const purchaseCost = ns.hacknet.getPurchaseNodeCost();
+        if (purchaseCost < bestUpgrade.cost && purchaseCost <= limit) {
+            bestUpgrade = { type: 'purchase', cost: purchaseCost };
         }
 
-        // Upgrade RAM
-        const ramCost = ns.hacknet.getRamUpgradeCost(i, 1);
-        if (ramCost < bestUpgrade.cost && ramCost <= budget*6) {
-            bestUpgrade = { type: 'ram', node: i, cost: ramCost };
+        // --- 2. Evaluate upgrading existing nodes ---
+        const numNodes = ns.hacknet.numNodes();
+        for (let i = 0; i < numNodes; i++) {
+            // Upgrade Level
+            const levelCost = ns.hacknet.getLevelUpgradeCost(i, 1);
+            if (levelCost < bestUpgrade.cost && levelCost <= limit) {
+                bestUpgrade = { type: 'level', node: i, cost: levelCost };
+            }
+
+            // Upgrade RAM
+            const ramCost = ns.hacknet.getRamUpgradeCost(i, 1);
+            if (ramCost < bestUpgrade.cost && ramCost <= limit) {
+                bestUpgrade = { type: 'ram', node: i, cost: ramCost };
+            }
+
+            // Upgrade Cores
+            const coreCost = ns.hacknet.getCoreUpgradeCost(i, 1);
+            if (coreCost < bestUpgrade.cost && coreCost <= limit) {
+                bestUpgrade = { type: 'core', node: i, cost: coreCost };
+            }
         }
 
-        // Upgrade Cores
-        const coreCost = ns.hacknet.getCoreUpgradeCost(i, 1);
-        if (coreCost < bestUpgrade.cost && coreCost <= budget*100) {
-            bestUpgrade = { type: 'core', node: i, cost: coreCost };
+        if (bestUpgrade.type === 'none') {
+            break;
+        }
+
+        // --- 3. Perform the best action found ---
+        let success = false;
+        switch (bestUpgrade.type) {
+            case 'purchase':
+                success = ns.hacknet.purchaseNode() !== -1;
+                if (success) {
+                    ns.print(`SUCCESS: Purchased new hacknet node.`);
+                    await updateCost(ns, 'hacknet', bestUpgrade.cost);
+                }
+                break;
+            case 'level':
+                success = ns.hacknet.upgradeLevel(bestUpgrade.node, 1);
+                if (success) {
+                    ns.print(`SUCCESS: Upgraded hacknet node ${bestUpgrade.node} level.`);
+                    await updateCost(ns, 'hacknet', bestUpgrade.cost);
+                }
+                break;
+            case 'ram':
+                success = ns.hacknet.upgradeRam(bestUpgrade.node, 1);
+                if (success) {
+                    ns.print(`SUCCESS: Upgraded hacknet node ${bestUpgrade.node} RAM.`);
+                    await updateCost(ns, 'hacknet', bestUpgrade.cost);
+                }
+                break;
+            case 'core':
+                success = ns.hacknet.upgradeCore(bestUpgrade.node, 1);
+                if (success) {
+                    ns.print(`SUCCESS: Upgraded hacknet node ${bestUpgrade.node} cores.`);
+                    await updateCost(ns, 'hacknet', bestUpgrade.cost);
+                }
+                break;
+        }
+
+        if (success) {
+            remainingBudget -= bestUpgrade.cost;
+            upgradedAny = true;
+        } else {
+            // If the transaction failed, break to prevent infinite loops
+            break;
         }
     }
 
-    // --- 3. Perform the best action found ---
-    switch (bestUpgrade.type) {
-        case 'purchase':
-            ns.hacknet.purchaseNode();
-            ns.tprint(`SUCCESS: Purchased new hacknet node.`);
-            await updateCost(ns, 'hacknet', bestUpgrade.cost);
-            return true;
-        case 'level':
-            ns.hacknet.upgradeLevel(bestUpgrade.node, 1);
-            ns.tprint(`SUCCESS: Upgraded hacknet node ${bestUpgrade.node} level.`);
-            await updateCost(ns, 'hacknet', bestUpgrade.cost);
-            return true;
-        case 'ram':
-            ns.hacknet.upgradeRam(bestUpgrade.node, 1);
-            ns.tprint(`SUCCESS: Upgraded hacknet node ${bestUpgrade.node} RAM.`);
-            await updateCost(ns, 'hacknet', bestUpgrade.cost);
-            return true;
-        case 'core':
-            ns.hacknet.upgradeCore(bestUpgrade.node, 1);
-            ns.tprint(`SUCCESS: Upgraded hacknet node ${bestUpgrade.node} cores.`);
-            await updateCost(ns, 'hacknet', bestUpgrade.cost);
-            return true;
-        case 'none':
-        default:
-            return false;
-    }
+    return upgradedAny;
 }
