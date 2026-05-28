@@ -12,12 +12,24 @@ export async function deployLibs(ns, hosts) {
     const remoteHosts = hosts.filter(h => h !== "home");
     if (remoteHosts.length === 0) return;
 
-    const libFiles = ns.ls("home", "/lib/").filter(f => f.endsWith('.js'));
-    const utilFiles = ns.ls("home", "/util/").filter(f => f.endsWith('.js'));
-    const hackFiles = ns.ls("home", "/hack/").filter(f => f.endsWith('.js'));
-    const allLibs = [...libFiles, ...utilFiles, ...hackFiles];
+    // Use full list of home files and filter containing folder names to handle paths with or without leading slashes robustly
+    const allFiles = ns.ls("home");
+    const allLibs = allFiles.filter(f => 
+        (f.includes('lib/') || f.includes('util/') || f.includes('hack/')) && 
+        f.endsWith('.js')
+    );
+
+    ns.print(`Deployment: Found ${allLibs.length} scripts to deploy.`);
+    if (allLibs.length === 0) {
+        ns.print(`WARNING: No scripts found under lib/, util/, or hack/ directories on home!`);
+        return;
+    }
 
     for (const host of remoteHosts) {
-        await ns.scp(allLibs, host, "home");
+        ns.print(`Deployment: Syncing scripts to ${host}...`);
+        const success = await ns.scp(allLibs, host, "home");
+        if (!success) {
+            ns.print(`ERROR: Failed to scp scripts to ${host}!`);
+        }
     }
 }

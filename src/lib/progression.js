@@ -13,15 +13,13 @@ export function checkTransition(ns, currentStage) {
         case "early":
             // Transition to 'midgame' when we have at least 1TB (1024GB) of RAM.
             // This ensures we have enough capacity for batchers or heavier logic.
-            // Temporarily disabled until midgame script is ready.
-            // if (maxRam >= 1024) {
-            //     return "midgame";
-            // }
+            if (maxRam >= 1024) {
+                return "midgame";
+            }
             break;
         
         case "midgame":
             // Placeholder: Transition to 'endgame' or other stages
-            // if (ns.formulas.hacking.hackChance(...) > 0.9) return "endgame";
             break;
 
         default:
@@ -38,10 +36,10 @@ export function checkTransition(ns, currentStage) {
  * @returns {string}
  */
 export function getStartupStage(ns) {
-    // const maxRam = ns.getServerMaxRam("home");
+    const maxRam = ns.getServerMaxRam("home");
     
     // Logic to determine stage:
-    // if (maxRam >= 1024) return "midgame"; // Disabled for now
+    if (maxRam >= 1024) return "midgame";
     
     return "early";
 }
