@@ -32,6 +32,9 @@ export function getRankedTargets(ns, hosts) {
 
 /**
  * Determines the next action (Hack, Grow, or Weaken) for a target.
+ * NOTE: This is the lightweight early-game version. It returns a single action
+ * and does NOT bundle compensating Weakens (to stay within daemon's 8GB RAM budget).
+ * The midgame batcher handles bundling with its own logic.
  * @param {NS} ns
  * @param {string} target
  * @returns {{script: string, threads: number}|null}
@@ -54,7 +57,6 @@ export function getNextAction(ns, target) {
     // B. GROW: If money is low, prioritize growing.
     if (money < maxMoney * 0.90) {
         // Calculate required multiplier to reach 100% money.
-        // We use a small safety margin of 1.1x.
         const multiplier = maxMoney / Math.max(money, 1);
         const threadsNeeded = Math.ceil(ns.growthAnalyze(target, multiplier));
         return { script: "/hack/grow.js", threads: threadsNeeded };
