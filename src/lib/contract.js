@@ -98,6 +98,7 @@ function getContractSolver(type) {
     case 'Compression I: RLE Compression': return rleCompress;
     case 'Square Root': return squareRoot;
     case 'Shortest Path in a Grid': return shortestPathInGrid;
+    case 'Total Number of Primes': return totalPrimes;
     default: return null;
   }
 }
@@ -408,4 +409,30 @@ export function shortestPathInGrid(ns, data) {
     }
   }
   return "";
+}
+
+export function totalPrimes(ns, data) {
+  const n = data;
+  if (n < 2) return 0;
+  
+  const isPrime = new Uint8Array(n + 1);
+  isPrime.fill(1);
+  isPrime[0] = 0;
+  isPrime[1] = 0;
+  
+  for (let p = 2; p * p <= n; p++) {
+    if (isPrime[p] === 1) {
+      for (let i = p * p; i <= n; i += p) {
+        isPrime[i] = 0;
+      }
+    }
+  }
+  
+  let count = 0;
+  for (let i = 2; i <= n; i++) {
+    if (isPrime[i] === 1) {
+      count++;
+    }
+  }
+  return count;
 }

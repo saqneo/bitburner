@@ -47,7 +47,10 @@ export async function main(ns) {
     {name: 'squareRoot.1', func: libcontract.squareRoot, data: '10', solution: '3'},
     {name: 'squareRoot.2', func: libcontract.squareRoot, data: '14', solution: '4'},
     {name: 'squareRoot.3', func: libcontract.squareRoot, data: '15241578780673809228807530631682705574548074983058869151240375', solution: '3904046462412276315864905666056'},
-    {name: 'shortestPathInGrid.1', func: libcontract.shortestPathInGrid, data: [[0, 1, 0], [0, 0, 0], [1, 1, 0]], solution: 'DRRD'}
+    {name: 'shortestPathInGrid.1', func: libcontract.shortestPathInGrid, data: [[0, 1, 0], [0, 0, 0], [1, 1, 0]], solution: 'DRRD'},
+    {name: 'totalPrimes.10', func: libcontract.totalPrimes, data: 10, solution: 4},
+    {name: 'totalPrimes.100', func: libcontract.totalPrimes, data: 100, solution: 25},
+    {name: 'totalPrimes.1', func: libcontract.totalPrimes, data: 1, solution: 0}
   ]
   tests.forEach((test) => { runTest(ns, test) })
 }
