@@ -1,16 +1,20 @@
+import { renderHud, cleanupHudSection } from '/lib/hud-dom.js';
+
 /** @param {NS} ns */
 export async function main(ns) {
     ns.disableLog("ALL");
     ns.clearLog();
-    ns.ui.openTail();
-    ns.ui.setTailTitle("Stock Trader");
-    ns.ui.resizeTail(750, 450);
-    ns.ui.moveTail(250, 80);
+    
+    // Register standard DOM HUD cleanup on script termination
+    ns.atExit(() => {
+        cleanupHudSection("stock");
+    });
 
     // Constants for trade logic (Long Only)
-    const WINDOW_SIZE = 12;            // Number of historical ticks to estimate forecast
+    const WINDOW_SIZE = 20;            // Number of historical ticks to estimate forecast (larger = less noise)
+    const INVERSION_WINDOW = 6;        // Recent ticks checked for forecast inversion detection
     const BUY_THRESHOLD = 0.65;        // Estimated forecast >= 65% -> Buy Long
-    const SELL_THRESHOLD = 0.45;       // Estimated forecast <= 45% -> Sell Long
+    const SELL_THRESHOLD = 0.50;       // Estimated forecast <= 50% -> Sell at neutral (don't wait for bearish)
     const MIN_TRADE_VALUE = 5000000;   // Don't trade if position value is < $5M (avoids fee cannibalization)
     const COMMISSION = 100000;         // Flat fee per transaction ($100k)
 
@@ -88,6 +92,22 @@ export async function main(ns) {
                 h.shift();
             }
 
+            // Inversion Detection: If recent ticks strongly contradict the overall trend,
+            // the stock's hidden forecast likely flipped. Reset history to prevent stale
+            // data from delaying sell signals or generating false buy signals.
+            if (h.length >= WINDOW_SIZE) {
+                const recentSlice = h.slice(-INVERSION_WINDOW);
+                const recentForecast = recentSlice.reduce((a, b) => a + b, 0) / INVERSION_WINDOW;
+                const overallForecast = estimateForecast(h);
+
+                // Trigger: recent and overall are on opposite sides of 50% with meaningful gap
+                const crossed = (recentForecast > 0.5) !== (overallForecast > 0.5);
+                const divergence = Math.abs(overallForecast - recentForecast);
+                if (crossed && divergence >= 0.35) {
+                    history.set(sym, [...recentSlice]);
+                }
+            }
+
             lastPrices.set(sym, newPrice);
         }
 
@@ -129,7 +149,7 @@ function executeTradingStrategy(ns, symbols, history, currentPrices, cashReserve
         const forecast = estimateForecast(history.get(sym));
 
         // Skip evaluation if we don't have enough history to make a confident estimate
-        if (history.get(sym).length < 6) {
+        if (history.get(sym).length < 10) {
             continue;
         }
 
@@ -151,39 +171,40 @@ function executeTradingStrategy(ns, symbols, history, currentPrices, cashReserve
     }
 
     // 2. Identify new entry opportunities with remaining cash
-    const availableCash = ns.getServerMoneyAvailable("home") - cashReserve;
-    if (availableCash < minTradeValue) {
-        return tickRealizedPL; // Insufficient cash to make a meaningful, fee-efficient trade
+    if (ns.getServerMoneyAvailable("home") - cashReserve < minTradeValue) {
+        return tickRealizedPL; // Insufficient cash to make any meaningful trade
     }
 
-    // Sort symbols by their forecast strength to prioritize the best stocks
+    // Rank all stocks with sufficient history by forecast strength
     const candidates = symbols
         .map(sym => {
             const forecast = estimateForecast(history.get(sym));
             return { sym, forecast, hLength: history.get(sym).length };
         })
-        .filter(c => c.hLength >= 6); // Require at least 6 ticks of history
+        .filter(c => c.hLength >= 10)     // Require enough history for a confident estimate
+        .filter(c => c.forecast >= buyThreshold)
+        .sort((a, b) => b.forecast - a.forecast);
 
-    // Find the best Long candidate (highest forecast)
-    const bestLong = candidates.reduce((prev, curr) => (curr.forecast > prev.forecast ? curr : prev), { forecast: 0 });
+    // Execute Long Entries: buy ALL candidates above threshold (portfolio diversification)
+    for (const candidate of candidates) {
+        const [sharesLong] = ns.stock.getPosition(candidate.sym);
+        if (sharesLong > 0) continue; // Already holding this stock
 
-    // Execute Long Entry
-    if (bestLong.forecast >= buyThreshold) {
-        const [sharesLong] = ns.stock.getPosition(bestLong.sym);
-        if (sharesLong === 0) {
-            const price = ns.stock.getAskPrice(bestLong.sym);
-            const maxShares = ns.stock.getMaxShares(bestLong.sym);
-            
-            // Calculate how many shares we can afford with our available cash
-            // accounting for the $100k commission fee
-            const affordableShares = Math.floor((availableCash - commission) / price);
-            const purchaseShares = Math.min(affordableShares, maxShares);
-            const tradeValue = purchaseShares * price;
+        const availableCash = ns.getServerMoneyAvailable("home") - cashReserve;
+        if (availableCash < minTradeValue) break; // No more investable cash
 
-            if (purchaseShares > 0 && tradeValue >= minTradeValue) {
-                ns.stock.buyStock(bestLong.sym, purchaseShares);
-                ns.print(`[BUY] Opened Long on ${bestLong.sym}: ${purchaseShares.toLocaleString()} shares @ $${price.toFixed(2)} (Value: $${(tradeValue / 1e6).toFixed(1)}M). Forecast: ${(bestLong.forecast * 100).toFixed(0)}%.`);
-            }
+        const price = ns.stock.getAskPrice(candidate.sym);
+        const maxShares = ns.stock.getMaxShares(candidate.sym);
+
+        // Calculate how many shares we can afford with our available cash
+        // accounting for the $100k commission fee
+        const affordableShares = Math.floor((availableCash - commission) / price);
+        const purchaseShares = Math.min(affordableShares, maxShares);
+        const tradeValue = purchaseShares * price;
+
+        if (purchaseShares > 0 && tradeValue >= minTradeValue) {
+            ns.stock.buyStock(candidate.sym, purchaseShares);
+            ns.print(`[BUY] Opened Long on ${candidate.sym}: ${purchaseShares.toLocaleString()} shares @ $${price.toFixed(2)} (Value: $${(tradeValue / 1e6).toFixed(1)}M). Forecast: ${(candidate.forecast * 100).toFixed(0)}%.`);
         }
     }
 
@@ -292,6 +313,30 @@ function updateDashboard(ns, symbols, history, currentPrices, tickCount, cashRes
         ns.print(` ${symStr} ${priceStr} ${forecastStr} ${posStr} ${avgStr} ${plStr}`);
     }
     ns.print("╚══════════════════════════════════════════════════════════════════════╝");
+
+    // Construct and update holdings stats on horizontal Top Bar HUD
+    const holdings = [];
+    for (const sym of symbols) {
+        const [sharesLong, avgPriceLong] = ns.stock.getPosition(sym);
+        if (sharesLong > 0) {
+            const pl = sharesLong * (ns.stock.getBidPrice(sym) - avgPriceLong);
+            holdings.push({ sym, pl });
+        }
+    }
+    
+    // Store globally in window state
+    window.customHudStock = {
+        portfolioVal: portfolioVal,
+        cash: cash,
+        totalPL: totalPL,
+        tickCount: tickCount,
+        cashReserve: cashReserve,
+        holdings: holdings,
+        allStocks: stockRows // Includes pre-sorted, calculated price, forecast, posText, avgText, plText
+    };
+
+    // Render the unified horizontal HUD
+    renderHud();
 }
 
 /**
