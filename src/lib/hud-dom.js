@@ -607,3 +607,10 @@ export function cleanupHudSection(sectionId) {
         }
     }
 }
+
+// Register global hooks using eval to bypass 25GB static RAM charge for other scripts importing this
+try {
+    const win = eval("window");
+    win.renderCustomHud = renderHud;
+    win.cleanupCustomHudSection = cleanupHudSection;
+} catch (e) {}

@@ -9,6 +9,7 @@ export async function main(ns) {
     // Define tests: [Script Path, Max RAM]
     const tests = [
         ["/daemon.js", 8.0],
+        ["/monitor.js", 32.0],              // Swarm HUD monitor (uses DOM APIs)
         ["/util/purchase-server.js", 16.0], // Max RAM for remote execution
         ["/util/upgrade-hacknet.js", 16.0],  // Max RAM for remote execution
         ["/util/solve-contracts.js", 32.0], // Heavier script, requires more RAM

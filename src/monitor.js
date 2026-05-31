@@ -59,8 +59,8 @@ export async function main(ns) {
             };
         }
 
-        // Store globally in window state
-        window.customHudSwarm = {
+        // Store globally in window state using eval to bypass 25GB static RAM charge
+        eval("window").customHudSwarm = {
             stage: stage.toUpperCase(),
             ramUsed: ramStats.used,
             ramMax: ramStats.max,
@@ -78,10 +78,10 @@ export async function main(ns) {
         // Render the unified horizontal HUD
         renderHud();
 
-        // Real-time error diagnostic print
-        if (window.customHudError) {
-            ns.tprint(`Custom HUD ERROR: ${window.customHudError}`);
-            window.customHudError = null; // Clear to avoid log spam
+        // Real-time error diagnostic print using eval to bypass 25GB static RAM charge
+        if (eval("window").customHudError) {
+            ns.tprint(`Custom HUD ERROR: ${eval("window").customHudError}`);
+            eval("window").customHudError = null; // Clear to avoid log spam
         }
 
         // 1Hz Refresh Rate

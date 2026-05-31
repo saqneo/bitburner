@@ -1,5 +1,3 @@
-import { renderHud, cleanupHudSection } from '/lib/hud-dom.js';
-
 /** @param {NS} ns */
 export async function main(ns) {
     ns.disableLog("ALL");
@@ -7,7 +5,10 @@ export async function main(ns) {
     
     // Register standard DOM HUD cleanup on script termination
     ns.atExit(() => {
-        cleanupHudSection("stock");
+        const win = eval("window");
+        if (win.cleanupCustomHudSection) {
+            win.cleanupCustomHudSection("stock");
+        }
     });
 
     // Constants for trade logic (Long Only)
@@ -324,8 +325,8 @@ function updateDashboard(ns, symbols, history, currentPrices, tickCount, cashRes
         }
     }
     
-    // Store globally in window state
-    window.customHudStock = {
+    // Store globally in window state using eval to bypass 25GB static RAM charge
+    eval("window").customHudStock = {
         portfolioVal: portfolioVal,
         cash: cash,
         totalPL: totalPL,
@@ -335,8 +336,11 @@ function updateDashboard(ns, symbols, history, currentPrices, tickCount, cashRes
         allStocks: stockRows // Includes pre-sorted, calculated price, forecast, posText, avgText, plText
     };
 
-    // Render the unified horizontal HUD
-    renderHud();
+    // Render the unified horizontal HUD using dynamic global hook to save RAM
+    const win = eval("window");
+    if (win.renderCustomHud) {
+        win.renderCustomHud();
+    }
 }
 
 /**
