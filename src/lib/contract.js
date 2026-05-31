@@ -146,9 +146,10 @@ export function arrayJumpingI(ns, data) {
 }
 
 export function subarrayMaxSum(ns, data) {
-  let cur = 0, max = 0;
-  for (const n of data) {
-    cur = Math.max(0, cur + n);
+  if (data.length === 0) return 0;
+  let cur = data[0], max = data[0];
+  for (let i = 1; i < data.length; i++) {
+    cur = Math.max(data[i], cur + data[i]);
     max = Math.max(max, cur);
   }
   return max;

@@ -5,6 +5,7 @@ export async function main(ns) {
   // { String, func(ns, data), T_data, Any}
   const tests = [
     {name: 'subarrayMaxSum', func: libcontract.subarrayMaxSum, data: [5, -2, 4], solution: 7},
+    {name: 'subarrayMaxSum.allNeg', func: libcontract.subarrayMaxSum, data: [-3, -1, -2], solution: -1},
     {name: 'uniquePaths.I.3x2', func: libcontract.uniquePaths, data: [3, 2], solution: 3},
     {name: 'uniquePaths.I.3x3', func: libcontract.uniquePaths, data: [3, 3], solution: 6},
     {name: 'uniquePaths.II.3x2', func: libcontract.uniquePaths, data: [[ 0, 0, 1],[ 0, 0, 0]], solution: 2},
