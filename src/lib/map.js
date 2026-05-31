@@ -16,20 +16,6 @@ export function getAllNodes(ns) {
         }
     }
 
-    // Explicitly add all purchased servers since they are not connected to scan BFS tree
-    try {
-        const purchased = ns.getPurchasedServers();
-        for (const server of purchased) {
-            visited.add(server);
-        }
-    } catch (e) {
-        try {
-            const purchased = ns.cloud.getServerNames();
-            for (const server of purchased) {
-                visited.add(server);
-            }
-        } catch (err) {}
-    }
 
     return [...visited]
 }

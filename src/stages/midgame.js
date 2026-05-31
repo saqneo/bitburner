@@ -56,9 +56,13 @@ export async function main(ns) {
             const maxMoney = server.moneyMax;
 
             // C. State Management
-            // If the pipeline dries up (0 PIDs running), re-evaluate state based on actual metrics.
-            // Otherwise, we maintain the current state to trust the running pipeline.
-            if (pids.length === 0 || !targetStates.has(target)) {
+            // If the server has drifted too far (money below 80% or security above min + 0.5),
+            // immediately trigger a "prep" state to let the server heal, even if PIDs are active.
+            // Otherwise, if the pipeline is dry, check if we need prep or can harvest.
+            const isUnprepped = (sec > minSec + 0.5) || (money < maxMoney * 0.80);
+            if (isUnprepped || !targetStates.has(target)) {
+                targetStates.set(target, "prep");
+            } else if (pids.length === 0) {
                 const needsPrep = (sec > minSec + 0.1) || (money < maxMoney * 0.90);
                 targetStates.set(target, needsPrep ? "prep" : "harvest");
             }

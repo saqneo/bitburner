@@ -19,14 +19,6 @@ export async function main(ns) {
     // Launch System Monitor HUD (silently fails if already running, keeping daemon RAM at 0GB extra footprint)
     ns.exec("/monitor.js", "home", 1);
 
-    // --- 1.1 CLEANUP ---
-    // Clear temporary data from previous runs to prevent stale state (e.g. costs)
-    ns.print("Daemon: Clearing /tmp/ directory...");
-    try {
-        ns.rm("/tmp/", "home", { recursive: true });
-    } catch (e) {
-        // ns.rm throws an error if the directory doesn't exist. This is expected and harmless.
-    }
 
     // Initial Setup
     ns.print("Daemon: Running initial network spread...");

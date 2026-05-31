@@ -40,11 +40,10 @@ export function getRankedTargets(ns, hosts) {
  * @returns {{script: string, threads: number}|null}
  */
 export function getNextAction(ns, target) {
-    const server = ns.getServer(target);
-    const sec = server.hackDifficulty;
-    const minSec = server.minDifficulty;
-    const money = server.moneyAvailable;
-    const maxMoney = server.moneyMax;
+    const sec = ns.getServerSecurityLevel(target);
+    const minSec = ns.getServerMinSecurityLevel(target);
+    const money = ns.getServerMoneyAvailable(target);
+    const maxMoney = ns.getServerMaxMoney(target);
 
     // A. WEAKEN: If security is too high, prioritize weakening.
     // 0.05 is the amount one thread reduces security by.
