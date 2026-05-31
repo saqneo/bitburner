@@ -79,18 +79,17 @@ export function updateHud(ns, context = {}) {
     ns.print(hr);
 }
 
-function getRamStats(ns, nodes) {
+export function getRamStats(ns, nodes) {
     let max = 0, used = 0;
     for (const node of nodes) {
-        if (node === "home" || node.startsWith("owned-")) {
-            max += ns.getServerMaxRam(node);
-            used += ns.getServerUsedRam(node);
-        }
+        if (!ns.hasRootAccess(node)) continue;
+        max += ns.getServerMaxRam(node);
+        used += ns.getServerUsedRam(node);
     }
     return { max, used };
 }
 
-function getProcessStats(ns, nodes) {
+export function getProcessStats(ns, nodes) {
     let hack = 0, grow = 0, weaken = 0, total = 0;
     const targetCounts = {};
     for (const node of nodes) {
@@ -120,7 +119,7 @@ function getProcessStats(ns, nodes) {
     return { hack, grow, weaken, total, topTarget: targets.length > 0 ? targets[0].name : null, targets };
 }
 
-function getContractCount(ns, nodes) {
+export function getContractCount(ns, nodes) {
     let count = 0;
     for (const node of nodes) {
         count += ns.ls(node).filter(f => f.endsWith('.cct')).length;
