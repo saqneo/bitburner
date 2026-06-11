@@ -21,7 +21,7 @@ export function distribute(ns, script, needed, target, hosts, options = {}) {
         const totalNetworkRam = hosts.reduce((sum, h) => {
             if (!ns.hasRootAccess(h)) return sum;
             let max = ns.getServerMaxRam(h);
-            if (h === "home") max = Math.max(0, max - 64);
+            if (h === "home") max = Math.max(0, max - 128);
             return sum + max;
         }, 0);
         const maxThreads = Math.max(1, Math.floor((totalNetworkRam * ramCapPct) / ramCost));
@@ -74,7 +74,7 @@ export function distribute(ns, script, needed, target, hosts, options = {}) {
 
         let available = ns.getServerMaxRam(host) - ns.getServerUsedRam(host);
         if (host === "home") {
-            available -= 64; // Reserve 64GB on home for orchestrators and utilities
+            available -= 128; // Reserve 128GB on home for orchestrators and utilities
         }
         
         if (available < ramCost) {

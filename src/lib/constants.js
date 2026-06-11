@@ -36,3 +36,43 @@ export const HACK_FRACTION = 0.20;
  * @type {number}
  */
 export const GROW_SAFETY_FACTOR = 1.2;
+
+// --- Singularity Constants ---
+
+/**
+ * The base tick rate for the Singularity manager, in milliseconds.
+ * @type {number}
+ */
+export const SING_TICK_MS = 10000;
+
+/**
+ * The interval for running full state scans of the Singularity API, in milliseconds.
+ * @type {number}
+ */
+export const SING_SCAN_INTERVAL_MS = 60000;
+
+/**
+ * Minimum number of purchased but not installed augmentations before auto-prestige.
+ * @type {number}
+ */
+export const SING_MIN_AUGS_TO_INSTALL = 20;
+
+/**
+ * Set to true to automatically install augmentations and reset.
+ * Defaults to false for player safety.
+ * @type {boolean}
+ */
+export const SING_AUTO_INSTALL = false;
+
+/**
+ * Max fraction of current money to spend on home RAM/core upgrades.
+ * @type {number}
+ */
+export const SING_HOME_UPGRADE_PCT = 0.10;
+
+/**
+ * Time player must be doing the same work without interruption before stealing UI focus, in milliseconds.
+ * @type {number}
+ */
+export const SING_FOCUS_DELAY_MS = 300000;
+

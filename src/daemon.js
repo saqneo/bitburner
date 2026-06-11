@@ -16,9 +16,21 @@ export async function main(ns) {
     // Launch stock trader startup helper (transient execution to keep daemon RAM at 0GB extra footprint)
     ns.exec("/util/start-stock-trader.js", "home", 1);
 
-    // Launch System Monitor HUD (silently fails if already running, keeping daemon RAM at 0GB extra footprint)
+    // Launch System Monitor HUD (silently fails if already running)
     ns.exec("/monitor.js", "home", 1);
 
+    // Launch Singularity Manager if not running and we have enough RAM
+    const singScript = "/sing/manager.js";
+    if (ns.fileExists(singScript, "home") && !ns.isRunning(singScript, "home")) {
+        const singRam = ns.getScriptRam(singScript, "home");
+        const freeRam = ns.getServerMaxRam("home") - ns.getServerUsedRam("home");
+        if (freeRam >= singRam) {
+            ns.exec(singScript, "home", 1);
+            ns.tprint(`Daemon: Launched Singularity Manager (${singRam.toFixed(2)} GB).`);
+        } else {
+            ns.print(`Daemon: Skipping Singularity Manager (needs ${singRam.toFixed(2)} GB, only ${freeRam.toFixed(2)} GB free).`);
+        }
+    }
 
     // Initial Setup
     ns.print("Daemon: Running initial network spread...");
@@ -43,6 +55,10 @@ export async function main(ns) {
             ns.tprint("Daemon: Transitioning to Midgame Concurrent Batcher...");
             ns.tprint("Daemon: Launching /stages/midgame.js on home and exiting.");
             ns.exec('/stages/midgame.js', 'home', 1);
+            // Launch Singularity manager if not running (best effort)
+            if (ns.fileExists(singScript, "home") && !ns.isRunning(singScript, "home")) {
+                ns.exec(singScript, "home", 1);
+            }
             return; // Exit daemon to free its RAM for the midgame script
         } else {
             ns.tprint(`Daemon: Unknown stage '${stage}'. Exiting.`);

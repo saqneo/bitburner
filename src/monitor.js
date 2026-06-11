@@ -72,7 +72,8 @@ export async function main(ns) {
             topTargets: procStats.targets,
             primaryTarget: primaryTarget,
             incomeRate: incomeRate,
-            expRate: expRate
+            expRate: expRate,
+            singStatus: eval("window").customHudSing || null
         };
 
         // Render the unified horizontal HUD

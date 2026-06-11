@@ -18,6 +18,19 @@ export async function main(ns) {
     // Launch stock trader startup helper (transient execution to keep midgame RAM at 0GB extra footprint)
     ns.exec("/util/start-stock-trader.js", "home", 1);
 
+    // Launch Singularity Manager if not running and we have enough RAM
+    const singScript = "/sing/manager.js";
+    if (ns.fileExists(singScript, "home") && !ns.isRunning(singScript, "home")) {
+        const singRam = ns.getScriptRam(singScript, "home");
+        const freeRam = ns.getServerMaxRam("home") - ns.getServerUsedRam("home");
+        if (freeRam >= singRam) {
+            ns.exec(singScript, "home", 1);
+            ns.tprint(`Midgame: Launched Singularity Manager (${singRam.toFixed(2)} GB).`);
+        } else {
+            ns.print(`Midgame: Skipping Singularity Manager (needs ${singRam.toFixed(2)} GB, only ${freeRam.toFixed(2)} GB free).`);
+        }
+    }
+
     const activeBatches = new Map(); // target -> [weaken_pids]
     const targetStates = new Map();  // target -> "prep" | "harvest"
     const lastLaunchTimes = new Map(); // target -> timestamp
@@ -195,7 +208,7 @@ function canFitBatch(ns, hosts, hackThreads, growThreads, weakenThreads) {
 
         let available = ns.getServerMaxRam(host) - ns.getServerUsedRam(host);
         if (host === "home") {
-            available -= 64; // Reserve 64GB on home for orchestrators and utilities
+            available -= 128; // Reserve 128GB on home for orchestrators and utilities
         }
 
         // Try to allocate weaken threads

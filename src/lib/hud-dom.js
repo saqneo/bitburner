@@ -295,6 +295,18 @@ function renderCollapsedView(container, swarm, stock) {
         const expRateText = swarm.expRate !== undefined 
             ? `<span style="color: #60a5fa; font-weight: bold;">${swarm.expRate.toFixed(1)} XP/s</span>`
             : `<span style="color: #64748b;">0 XP/s</span>`;
+
+        let singMini = "";
+        if (swarm.singStatus) {
+            const s = swarm.singStatus;
+            const prestigeColor = s.canPrestige ? "#4ade80" : "#cbd5e1";
+            const prestigeStyle = s.canPrestige ? "font-weight: bold;" : "";
+            const prestigeLabel = s.canPrestige ? "⚡ READY" : s.nextPrestige;
+            singMini = `
+                <span style="color: #334155;">|</span>
+                <span style="color: #a78bfa; font-weight: bold;">SING:</span> <span style="color: #cbd5e1;">${s.currentWork}</span> (<span style="color: ${prestigeColor}; ${prestigeStyle}">${prestigeLabel}</span>)
+            `;
+        }
             
         html += `
             <div style="display: flex; align-items: center; gap: 7px; height: 100%;">
@@ -310,6 +322,7 @@ function renderCollapsedView(container, swarm, stock) {
                 ${expRateText}
                 <span style="color: #334155;">|</span>
                 ${contractSpan}
+                ${singMini}
             </div>
         `;
     } else {
@@ -343,7 +356,7 @@ function renderCollapsedView(container, swarm, stock) {
         </div>
     `;
 }
-
+ 
 /**
  * Renders the fully expanded deep dashboard layout.
  */
@@ -362,15 +375,28 @@ function renderExpandedView(container, swarm, stock) {
             const monPct = t.moneyMax > 0 ? (t.moneyCurr / t.moneyMax) * 100 : 0;
             targetHtml = `
                 <div style="margin-top: 2px; border-top: 1px solid rgba(148, 163, 184, 0.12); padding-top: 2px;">
-                    <div style="color: #ffd700; font-weight: bold; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px;">TARGET: ${t.name}</div>
-                    <div style="display: flex; justify-content: space-between; margin-top: 1px; font-size: 10px;">
-                        <span>Security:</span>
+                    <div style="color: #ffd700; font-weight: bold; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10px;">TARGET: ${t.name}</div>
+                    <div style="display: flex; justify-content: space-between; margin-top: 1px; font-size: 9px;">
+                        <span>Sec:</span>
                         <span style="color: #cbd5e1; font-weight: bold;">${t.secCurr.toFixed(1)} / ${t.secMin.toFixed(1)}</span>
                     </div>
-                    <div style="display: flex; justify-content: space-between; font-size: 10px;">
+                    <div style="display: flex; justify-content: space-between; font-size: 9px;">
                         <span>Money:</span>
                         <span style="color: #4ade80; font-weight: bold;">${formatMoneyHUD(t.moneyCurr)} (${monPct.toFixed(0)}%)</span>
                     </div>
+                </div>
+            `;
+        }
+
+        let singHtml = "";
+        if (swarm.singStatus) {
+            const s = swarm.singStatus;
+            const prestigeColor = s.canPrestige ? "#4ade80" : "#cbd5e1";
+            singHtml = `
+                <div style="margin-top: 2px; border-top: 1px solid rgba(148, 163, 184, 0.12); padding-top: 2px;">
+                    <div style="color: #a78bfa; font-weight: bold; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10px;">SINGULARITY</div>
+                    <div style="font-size: 9px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">Work: <span style="color: #cbd5e1;">${s.currentWork}</span></div>
+                    <div style="font-size: 9px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">Status: <span style="color: ${prestigeColor}; font-weight: bold;">${s.nextPrestige}</span></div>
                 </div>
             `;
         }
@@ -378,16 +404,16 @@ function renderExpandedView(container, swarm, stock) {
         col1Html = `
             <div style="display: flex; flex-direction: column; justify-content: space-between; height: 100%; font-size: 11px;">
                 <div>
-                    <span style="color: ${stageColor}; font-weight: bold; font-size: 12.5px; text-shadow: 0 0 4px ${stageColor};">SWARM::${swarm.stage}</span>
-                    <div style="color: #cbd5e1; margin-top: 2px;"><span style="color: #c084fc;">Work:</span> <strong>${formatNumberHUD(swarm.threads)}</strong> | <span style="color: #f472b6;">CCT:</span> <strong>${swarm.contracts}</strong></div>
-                    <div style="color: #cbd5e1; margin-top: 1px;"><span style="color: #4ade80;">Inc:</span> <strong>${formatMoneyHUD(swarm.incomeRate || 0)}/s</strong></div>
-                    <div style="color: #cbd5e1; margin-top: 1px;"><span style="color: #60a5fa;">XP:</span> <strong>${(swarm.expRate || 0).toFixed(1)}/s</strong></div>
-                    <div style="color: #38bdf8; margin-top: 2px; font-family: monospace; font-size: 10px;">
+                    <span style="color: ${stageColor}; font-weight: bold; font-size: 12px; text-shadow: 0 0 4px ${stageColor};">SWARM::${swarm.stage}</span>
+                    <div style="color: #cbd5e1; margin-top: 1px; font-size: 10px;"><span style="color: #c084fc;">Work:</span> <strong>${formatNumberHUD(swarm.threads)}</strong> | <span style="color: #f472b6;">CCT:</span> <strong>${swarm.contracts}</strong></div>
+                    <div style="color: #cbd5e1; margin-top: 1px; font-size: 10px;"><span style="color: #4ade80;">Inc:</span> <strong>${formatMoneyHUD(swarm.incomeRate || 0)}/s</strong></div>
+                    <div style="color: #cbd5e1; margin-top: 1px; font-size: 10px;"><span style="color: #60a5fa;">XP:</span> <strong>${(swarm.expRate || 0).toFixed(1)}/s</strong></div>
+                    <div style="color: #38bdf8; margin-top: 2px; font-family: monospace; font-size: 9px;">
                         [<span style="color: #38bdf8;">${"|".repeat(ramFilled)}</span><span style="color: #334155;">${".".repeat(ramBarLength - ramFilled)}</span>] ${ramPct.toFixed(0)}%
                     </div>
-                    <div style="color: #64748b; font-size: 9px; margin-top: 1px;">${formatRAMHUD(swarm.ramUsed)} / ${formatRAMHUD(swarm.ramMax)}</div>
                 </div>
                 ${targetHtml}
+                ${singHtml}
             </div>
         `;
     } else {
