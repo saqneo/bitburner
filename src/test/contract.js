@@ -50,7 +50,13 @@ export async function main(ns) {
     {name: 'shortestPathInGrid.1', func: libcontract.shortestPathInGrid, data: [[0, 1, 0], [0, 0, 0], [1, 1, 0]], solution: 'DRRD'},
     {name: 'totalPrimes.10', func: libcontract.totalPrimes, data: 10, solution: 4},
     {name: 'totalPrimes.100', func: libcontract.totalPrimes, data: 100, solution: 25},
-    {name: 'totalPrimes.1', func: libcontract.totalPrimes, data: 1, solution: 0}
+    {name: 'totalPrimes.1', func: libcontract.totalPrimes, data: 1, solution: 0},
+    {name: 'hammingIntegerToBinary.21', func: libcontract.hammingIntegerToBinary, data: 21, solution: '1001101011'},
+    {name: 'hammingIntegerToBinary.14', func: libcontract.hammingIntegerToBinary, data: 14, solution: '10010110'},
+    {name: 'lzDecompress.1', func: libcontract.lzDecompress, data: '5he1103115', solution: 'he1100005'},
+    {name: 'lzDecompress.2', func: libcontract.lzDecompress, data: '3abc22', solution: 'abcbc'},
+    {name: 'proper2Coloring.triangle', func: libcontract.proper2Coloring, data: [3, [[0, 1], [1, 2], [2, 0]]], solution: []},
+    {name: 'proper2Coloring.bipartite', func: libcontract.proper2Coloring, data: [2, [[0, 1]]], solution: [0, 1]}
   ]
   tests.forEach((test) => { runTest(ns, test) })
 }

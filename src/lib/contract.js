@@ -99,6 +99,9 @@ function getContractSolver(type) {
     case 'Square Root': return squareRoot;
     case 'Shortest Path in a Grid': return shortestPathInGrid;
     case 'Total Number of Primes': return totalPrimes;
+    case 'HammingCodes: Integer to Encoded Binary': return hammingIntegerToBinary;
+    case 'Compression II: LZ Decompression': return lzDecompress;
+    case 'Proper 2-Coloring of a Graph': return proper2Coloring;
     default: return null;
   }
 }
@@ -435,4 +438,111 @@ export function totalPrimes(ns, data) {
     }
   }
   return count;
+}
+
+export function hammingIntegerToBinary(ns, data) {
+  const num = data;
+  const binaryStr = num.toString(2);
+  const m = binaryStr.length;
+  
+  let p = 0;
+  while ((1 << p) < m + p + 1) {
+    p++;
+  }
+  
+  const totalLen = m + p + 1;
+  const code = new Array(totalLen).fill(0);
+  
+  let dataIdx = 0;
+  for (let i = 1; i < totalLen; i++) {
+    if ((i & (i - 1)) !== 0) {
+      code[i] = parseInt(binaryStr[dataIdx], 10);
+      dataIdx++;
+    }
+  }
+  
+  for (let pi = 0; pi < p; pi++) {
+    const pos = 1 << pi;
+    let sum = 0;
+    for (let i = 1; i < totalLen; i++) {
+      if ((i & pos) !== 0 && i !== pos) {
+        sum ^= code[i];
+      }
+    }
+    code[pos] = sum;
+  }
+  
+  let overallParity = 0;
+  for (let i = 1; i < totalLen; i++) {
+    overallParity ^= code[i];
+  }
+  code[0] = overallParity;
+  
+  return code.join("");
+}
+
+export function lzDecompress(ns, data) {
+  const input = data;
+  let out = "";
+  let i = 0;
+  let isLiteral = true;
+  
+  while (i < input.length) {
+    const len = parseInt(input[i], 10);
+    i++;
+    
+    if (len === 0) {
+      isLiteral = !isLiteral;
+      continue;
+    }
+    
+    if (isLiteral) {
+      out += input.substring(i, i + len);
+      i += len;
+    } else {
+      const dist = parseInt(input[i], 10);
+      i++;
+      for (let k = 0; k < len; k++) {
+        out += out[out.length - dist];
+      }
+    }
+    isLiteral = !isLiteral;
+  }
+  return out;
+}
+
+export function proper2Coloring(ns, data) {
+  const numVertices = data[0];
+  const edges = data[1];
+  
+  const adj = Array.from({ length: numVertices }, () => []);
+  for (const [u, v] of edges) {
+    adj[u].push(v);
+    adj[v].push(u);
+  }
+  
+  const colors = new Array(numVertices).fill(-1);
+  
+  function dfs(node, c) {
+    colors[node] = c;
+    for (const neighbor of adj[node]) {
+      if (colors[neighbor] === -1) {
+        if (!dfs(neighbor, 1 - c)) {
+          return false;
+        }
+      } else if (colors[neighbor] === c) {
+        return false;
+      }
+    }
+    return true;
+  }
+  
+  for (let i = 0; i < numVertices; i++) {
+    if (colors[i] === -1) {
+      if (!dfs(i, 0)) {
+        return [];
+      }
+    }
+  }
+  return colors;
 }
