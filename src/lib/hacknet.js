@@ -13,9 +13,9 @@ import { updateCost } from '/lib/cost.js';
  */
 export async function manageHacknet(ns) {
     const money = ns.getServerMoneyAvailable("home");
-    // Spend up to 5% of our current money as our total budget for this iteration.
-    // If we are super rich, we can purchase many upgrades at once.
-    let remainingBudget = money * 0.05;
+    // Spend up to 5% of our current money, or 100% of it if money is below $100k
+    // to kickstart early game hacknet income.
+    let remainingBudget = money < 100000 ? money : money * 0.05;
     let upgradedAny = false;
 
     // Use a safety counter to avoid any infinite loop scenarios
