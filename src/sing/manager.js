@@ -1,5 +1,8 @@
 import { SING_TICK_MS, SING_SCAN_INTERVAL_MS, SING_MIN_AUGS_TO_INSTALL, SING_FOCUS_DELAY_MS, SING_AUTO_INSTALL } from '/lib/constants.js';
 
+/** Hacking-only factions — these only support 'hacking' work type. */
+const HACKING_FACTIONS = new Set(["CyberSec", "NiteSec", "The Black Hand", "BitRunners", "Bachman & Associates"]);
+
 /** @param {NS} ns */
 export async function main(ns) {
     ns.disableLog("ALL");
@@ -14,6 +17,7 @@ export async function main(ns) {
     let lastWorkStartTime = 0;
     let lastPrestigeNotify = 0;
     let activePid = 0;
+    const failedWorkTargets = new Set(); // Factions that work.js couldn't execute this cycle
 
     // Helper to run a task script serially
     async function runTask(script, args = []) {
@@ -111,7 +115,10 @@ export async function main(ns) {
         if (!ns.fileExists(stateFile) || (now - lastScanTime > SING_SCAN_INTERVAL_MS)) {
             ns.print("Manager: Running state scan...");
             const success = await runTaskWait("/sing/scan.js");
-            if (success) lastScanTime = Date.now();
+            if (success) {
+                lastScanTime = Date.now();
+                failedWorkTargets.clear(); // Stats may have changed, allow retries
+            }
         }
 
         // Check if a task is currently running
@@ -164,8 +171,15 @@ export async function main(ns) {
         }
 
         // 3. Periodic upgrades and backdoors
-        if (now - lastUpgradeTime > 60000) {
-            const success = await runTask("/sing/upgrade-home.js");
+        // Check if any faction still has unowned augs needing rep — if not, spend aggressively.
+        const hasRepTargets = Object.values(state.factions).some(f =>
+            f.augs.some(a => !a.owned && a.name !== "NeuroFlux Governor" && a.repReq > f.rep)
+        );
+        const upgradeInterval = hasRepTargets ? 60000 : 10000; // More frequent when nothing else to save for
+        const upgradeBudget = hasRepTargets ? "" : "0.50";     // 50% budget when no rep targets
+
+        if (now - lastUpgradeTime > upgradeInterval) {
+            const success = await runTask("/sing/upgrade-home.js", upgradeBudget ? [upgradeBudget] : []);
             if (success) lastUpgradeTime = Date.now();
             
             if (activePid > 0 && ns.isRunning(activePid)) {
@@ -182,13 +196,24 @@ export async function main(ns) {
             }
         }
 
-        // 4. Decision Logic: Prestige or Work
+        // 4. Donate to faction for NFG rep if all unique augs are owned
+        await runTaskWait("/sing/donate.js");
+
+        // 5. Decision Logic: Prestige or Work
         const prestigePlan = calculatePrestigePlan(ns, state);
+        const hasRedPill = state.installedAugs.includes("The Red Pill");
         
         // Update HUD global state
-        const nextPrestigeText = prestigePlan.canPrestige 
+        let nextPrestigeText = prestigePlan.canPrestige 
             ? `READY! Buy ${prestigePlan.count} augs`
-            : `${prestigePlan.count}/${SING_MIN_AUGS_TO_INSTALL} augs purchasable`;
+            : `${prestigePlan.count}/${prestigePlan.threshold} augs purchasable${prestigePlan.blocked > 0 ? ` (${prestigePlan.blocked} blocked)` : ""}`;
+        
+        // Append endgame hacking progress when Red Pill is installed
+        if (hasRedPill) {
+            const hackReq = state.worldDaemonHackReq || 0;
+            const hackLvl = state.player?.skills?.hacking || 0;
+            nextPrestigeText += ` | w0r1d: ${hackLvl}/${hackReq}`;
+        }
             
         eval("window").customHudSing = {
             active: true,
@@ -221,8 +246,18 @@ export async function main(ns) {
         }
 
         if (!triggeredReset) {
+            // Accumulate any work failures from previous ticks
+            const failFlag = "/data/sing-work-fail.txt";
+            if (ns.fileExists(failFlag)) {
+                const failed = ns.read(failFlag).trim();
+                if (failed) {
+                    failedWorkTargets.add(failed);
+                    ns.rm(failFlag);
+                }
+            }
+
             // No prestige triggered or auto-install is disabled, determine next work target
-            const workTarget = determineWorkTarget(ns, state);
+            let workTarget = determineWorkTarget(ns, state, failedWorkTargets);
             if (workTarget) {
                 // Focus logic
                 let shouldFocus = false;
@@ -330,17 +365,70 @@ function calculatePrestigePlan(ns, state) {
         addAugToPlan(aug);
     }
 
-    // Check if any unique (non-NFG) augmentations from our joined factions are still unowned
-    let uniqueRemaining = false;
+    // --- Dynamic threshold & Blocked augs detection ---
+    
+    // Build a map of all unique unowned augs across all joined factions
+    const joinedAugsMap = new Map();
     for (const factionName in state.factions) {
         const faction = state.factions[factionName];
         for (const aug of faction.augs) {
-            if (aug.name !== "NeuroFlux Governor" && !ownedSet.has(aug.name)) {
+            if (aug.name === "NeuroFlux Governor") continue;
+            if (!ownedSet.has(aug.name) && !joinedAugsMap.has(aug.name)) {
+                joinedAugsMap.set(aug.name, {
+                    name: aug.name,
+                    prereqs: aug.prereqs || [],
+                    faction: factionName
+                });
+            }
+        }
+    }
+
+    // Helper to check if an augmentation is blocked (prereqs cannot be resolved)
+    const blockedMemo = new Map();
+    function isBlocked(augName) {
+        if (ownedSet.has(augName)) return false;
+        if (blockedMemo.has(augName)) return blockedMemo.get(augName);
+
+        const aug = joinedAugsMap.get(augName);
+        if (!aug) {
+            // Prerequisite is not owned and not available in any joined faction
+            return true;
+        }
+
+        // Temporarily mark as blocked to prevent infinite loops (should be a DAG anyway)
+        blockedMemo.set(augName, true);
+
+        for (const prereq of aug.prereqs) {
+            if (isBlocked(prereq)) {
+                blockedMemo.set(augName, true);
+                return true;
+            }
+        }
+
+        blockedMemo.set(augName, false);
+        return false;
+    }
+
+    // Calculate blocked count and identify unblocked unique remaining augs
+    let blockedCount = 0;
+    let uniqueRemaining = false;
+    for (const [name, aug] of joinedAugsMap) {
+        if (isBlocked(name)) {
+            blockedCount++;
+        } else {
+            uniqueRemaining = true;
+        }
+    }
+
+    // Also check unjoined city factions — if any have unowned augs, we're not truly done.
+    // This prevents premature NFG-only prestige when we haven't explored all factions yet.
+    if (!uniqueRemaining && state.unjoinedCityFactions) {
+        for (const factionName in state.unjoinedCityFactions) {
+            if (state.unjoinedCityFactions[factionName].unownedCount > 0) {
                 uniqueRemaining = true;
                 break;
             }
         }
-        if (uniqueRemaining) break;
     }
 
     // Spend rest of wallet on NeuroFlux Governor ONLY if it is the ONLY augment remaining
@@ -383,13 +471,22 @@ function calculatePrestigePlan(ns, state) {
     const planUnique = plan.filter(item => item.name !== "NeuroFlux Governor").length;
     const uniqueCount = pendingUnique + planUnique;
 
-    // We can prestige if we meet the unique augment threshold,
-    // OR if we have bought all remaining unique augs (so NFG is the only one left) and bought at least one thing.
-    const canPrestige = (uniqueCount >= minAugs) || (!uniqueRemaining && plan.length > 0);
+    // Dynamic threshold: min of requested minAugs or the total possible accessible augs
+    const accessibleCount = joinedAugsMap.size - blockedCount;
+    const maxPossible = accessibleCount + pendingUnique;
+    const threshold = Math.max(1, Math.min(minAugs, maxPossible));
+
+    // Prestige criteria: Red Pill persists across resets, so resetting to install
+    // more augs is always fine and often faster than grinding XP alone.
+    const canPrestige = (uniqueCount >= threshold) || 
+                        (!uniqueRemaining && uniqueCount > 0 && plan.length > 0) ||
+                        (!uniqueRemaining && plan.length >= 5);
 
     return {
         canPrestige,
         count: uniqueCount,
+        threshold,
+        blocked: blockedCount,
         plan
     };
 }
@@ -397,10 +494,14 @@ function calculatePrestigePlan(ns, state) {
 /**
  * Determines what faction or company the player should work for.
  */
-function determineWorkTarget(ns, state) {
-    // 1. Check if we need to work at Bachman & Associates to unlock its faction
+function determineWorkTarget(ns, state, skipFactions = new Set()) {
+    // No special Red Pill override — normal priorities apply.
+    // Red Pill persists across resets, so continuing to grind rep / buy augs is optimal.
+    // Hacking XP grinding is handled by the smart fallback (Priority 3) when nothing else remains.
+
+    // === PRIORITY 1: Bachman & Associates ===
     const bnaJoined = "Bachman & Associates" in state.factions;
-    if (!bnaJoined && state.player) {
+    if (!skipFactions.has("Bachman & Associates") && !bnaJoined && state.player) {
         const jobs = state.player.jobs || {};
         const skills = state.player.skills || {};
         const hasJob = "Bachman & Associates" in jobs;
@@ -426,7 +527,6 @@ function determineWorkTarget(ns, state) {
         }
         
         if (hasJob || qualified) {
-            // B&A is in Aevum. If we are in another city, we must be able to afford the $200k travel cost
             const city = state.player.city || "Sector-12";
             const money = ns.getServerMoneyAvailable("home");
             if (city === "Aevum" || money >= 200000) {
@@ -436,8 +536,7 @@ function determineWorkTarget(ns, state) {
                 };
             }
         }
-    } else if (bnaJoined) {
-        // If B&A faction is joined, prioritize grinding its rep until we meet all B&A aug requirements
+    } else if (!skipFactions.has("Bachman & Associates") && bnaJoined) {
         const bnaFaction = state.factions["Bachman & Associates"];
         const bnaRep = bnaFaction.rep;
         const needsRep = bnaFaction.augs.some(aug => !aug.owned && aug.name !== "NeuroFlux Governor" && aug.repReq > bnaRep);
@@ -449,18 +548,17 @@ function determineWorkTarget(ns, state) {
         }
     }
 
-    // 2. Faction Work: Find the faction with the smallest reputation gap to unlock its next aug
+    // === PRIORITY 2: Faction with smallest rep gap to next unowned aug ===
     let bestFaction = null;
     let minGap = Infinity;
     let bestWorkType = "hacking";
 
     for (const factionName in state.factions) {
+        if (skipFactions.has(factionName)) continue;
         const faction = state.factions[factionName];
-        let factionHasUnownedAugs = false;
 
         for (const aug of faction.augs) {
-            if (!aug.owned) {
-                factionHasUnownedAugs = true;
+            if (!aug.owned && aug.name !== "NeuroFlux Governor") {
                 const gap = aug.repReq - faction.rep;
                 if (gap > 0 && gap < minGap) {
                     minGap = gap;
@@ -469,15 +567,8 @@ function determineWorkTarget(ns, state) {
             }
         }
 
-        // Determine best work type for this faction if selected
         if (bestFaction === factionName) {
-            // CyberSec, NiteSec, Black Hand, BitRunners, Bachman & Associates only support Hacking work.
-            // Other factions might support field/security work.
-            if (["CyberSec", "NiteSec", "The Black Hand", "BitRunners", "Bachman & Associates"].includes(factionName)) {
-                bestWorkType = "hacking";
-            } else {
-                bestWorkType = "field"; // default fallback for other factions
-            }
+            bestWorkType = HACKING_FACTIONS.has(factionName) ? "hacking" : "field";
         }
     }
 
@@ -488,9 +579,40 @@ function determineWorkTarget(ns, state) {
         };
     }
 
-    // 3. Fallback: Work at Joe's Guns to bootstrap stats/money at early game
+    // === PRIORITY 3: Smart fallback ===
+    // All joined factions are fully repped. Grind hacking XP at the best faction
+    // to continue progressing while waiting for new faction invites or prestige.
+    const xpFaction = findBestHackingFaction(state, skipFactions);
+    if (xpFaction) {
+        return { name: xpFaction, type: "hacking" };
+    }
+
+    // Absolute last resort — bootstrap stats/money in early game
     return {
         name: "Joe's Guns",
         type: "company"
     };
+}
+
+/**
+ * Finds the joined hacking-compatible faction with the highest reputation.
+ * Higher rep = better XP multiplier when doing hacking contracts.
+ * Returns the faction name, or null if no suitable faction is joined.
+ */
+function findBestHackingFaction(state, skipFactions = new Set()) {
+    let bestFaction = null;
+    let bestRep = -1;
+
+    for (const factionName in state.factions) {
+        if (skipFactions.has(factionName)) continue;
+        // Only consider factions that support hacking work
+        if (!HACKING_FACTIONS.has(factionName)) continue;
+        const rep = state.factions[factionName].rep;
+        if (rep > bestRep) {
+            bestRep = rep;
+            bestFaction = factionName;
+        }
+    }
+
+    return bestFaction;
 }
