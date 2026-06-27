@@ -1,4 +1,4 @@
-import { SING_TICK_MS, SING_SCAN_INTERVAL_MS, SING_MIN_AUGS_TO_INSTALL, SING_FOCUS_DELAY_MS, SING_AUTO_INSTALL } from '/lib/constants.js';
+import { SING_TICK_MS, SING_SCAN_INTERVAL_MS, SING_MIN_AUGS_TO_INSTALL, SING_FOCUS_DELAY_MS, SING_AUTO_INSTALL, SING_STALL_TIMEOUT_MS } from '/lib/constants.js';
 
 /** Hacking-only factions — these only support 'hacking' work type. */
 const HACKING_FACTIONS = new Set(["CyberSec", "NiteSec", "The Black Hand", "BitRunners", "Bachman & Associates"]);
@@ -18,6 +18,8 @@ export async function main(ns) {
     let lastPrestigeNotify = 0;
     let activePid = 0;
     const failedWorkTargets = new Set(); // Factions that work.js couldn't execute this cycle
+    let lastPlanCount = -1;
+    let stallStartTime = Date.now();
 
     // Helper to run a task script serially
     async function runTask(script, args = []) {
@@ -200,13 +202,21 @@ export async function main(ns) {
         await runTaskWait("/sing/donate.js");
 
         // 5. Decision Logic: Prestige or Work
-        const prestigePlan = calculatePrestigePlan(ns, state);
+        const stallDuration = Date.now() - stallStartTime;
+        const prestigePlan = calculatePrestigePlan(ns, state, stallDuration);
         const hasRedPill = state.installedAugs.includes("The Red Pill");
+
+        // Update stall tracking — reset timer when purchasable count changes
+        if (prestigePlan.count !== lastPlanCount) {
+            lastPlanCount = prestigePlan.count;
+            stallStartTime = Date.now();
+        }
         
         // Update HUD global state
+        let reasonTag = prestigePlan.reason ? ` [${prestigePlan.reason}]` : "";
         let nextPrestigeText = prestigePlan.canPrestige 
-            ? `READY! Buy ${prestigePlan.count} augs`
-            : `${prestigePlan.count}/${prestigePlan.threshold} augs purchasable${prestigePlan.blocked > 0 ? ` (${prestigePlan.blocked} blocked)` : ""}`;
+            ? `READY! Buy ${prestigePlan.plan.length} augs${reasonTag}`
+            : `${prestigePlan.count}/${prestigePlan.threshold} augs purchasable${prestigePlan.blocked > 0 ? ` (${prestigePlan.blocked} blocked)` : ""}${prestigePlan.donationUnlockAvailable ? " [donate-unlock pending]" : ""}`;
         
         // Append endgame hacking progress when Red Pill is installed
         if (hasRedPill) {
@@ -289,8 +299,9 @@ export async function main(ns) {
 
 /**
  * Calculates augmentations we can buy and whether we should prestige.
+ * @param {number} stallDurationMs - How long the purchasable count has been unchanged
  */
-function calculatePrestigePlan(ns, state) {
+function calculatePrestigePlan(ns, state, stallDurationMs = 0) {
     const minAugs = SING_MIN_AUGS_TO_INSTALL || 20;
     let wallet = ns.getServerMoneyAvailable("home");
     let multiplier = 1.9 ** state.pendingInstall.length;
@@ -431,8 +442,49 @@ function calculatePrestigePlan(ns, state) {
         }
     }
 
-    // Spend rest of wallet on NeuroFlux Governor ONLY if it is the ONLY augment remaining
-    if (!uniqueRemaining) {
+    // Count only unique (non-NeuroFlux Governor) augmentations towards the threshold
+    const pendingUnique = state.pendingInstall.filter(a => a !== "NeuroFlux Governor").length;
+    const planUnique = plan.filter(item => item.name !== "NeuroFlux Governor").length;
+    const uniqueCount = pendingUnique + planUnique;
+
+    // Dynamic threshold: min of requested minAugs or the total possible accessible augs
+    const accessibleCount = joinedAugsMap.size - blockedCount;
+    const maxPossible = accessibleCount + pendingUnique;
+    const threshold = Math.max(1, Math.min(minAugs, maxPossible));
+
+    // --- Donation-unlock prestige detection ---
+    // Check if resetting would give any faction enough favor to unlock donations,
+    // when that faction still has rep-gapped augs we can't buy yet.
+    const favorToDonate = state.favorToDonate || 150;
+    let donationUnlockAvailable = false;
+    for (const factionName in state.factions) {
+        const faction = state.factions[factionName];
+        if (faction.favor >= favorToDonate) continue; // Already can donate
+        const projectedFavor = faction.projectedFavor || (faction.favor + (faction.favorGain || 0));
+        if (projectedFavor < favorToDonate) continue; // Reset wouldn't unlock donations
+        const hasRepGap = faction.augs.some(a =>
+            !a.owned && a.name !== "NeuroFlux Governor" && a.repReq > faction.rep
+        );
+        if (hasRepGap) {
+            donationUnlockAvailable = true;
+            break;
+        }
+    }
+
+    // --- Stall detection ---
+    const isStalling = stallDurationMs > (SING_STALL_TIMEOUT_MS || 1800000);
+
+    // Initial prestige check based on unique (non-NFG) augmentations
+    // This gate also controls whether NFG top-off is attempted below.
+    const canPrestigeInitial = (uniqueCount >= threshold) || 
+                               (!uniqueRemaining && uniqueCount > 0 && plan.length > 0) ||
+                               (!uniqueRemaining && plan.length >= 10) ||
+                               donationUnlockAvailable ||
+                               isStalling;
+
+    // Spend rest of wallet on NeuroFlux Governor if it is the only augment remaining
+    // OR if we are already about to prestige (so leftover cash would be lost anyway).
+    if (!uniqueRemaining || canPrestigeInitial) {
         let nfgAvailable = false;
         let nfgFaction = "";
         let nfgPrice = Infinity;
@@ -466,28 +518,32 @@ function calculatePrestigePlan(ns, state) {
         }
     }
 
-    // Count only unique (non-NeuroFlux Governor) augmentations towards the threshold
-    const pendingUnique = state.pendingInstall.filter(a => a !== "NeuroFlux Governor").length;
-    const planUnique = plan.filter(item => item.name !== "NeuroFlux Governor").length;
-    const uniqueCount = pendingUnique + planUnique;
-
-    // Dynamic threshold: min of requested minAugs or the total possible accessible augs
-    const accessibleCount = joinedAugsMap.size - blockedCount;
-    const maxPossible = accessibleCount + pendingUnique;
-    const threshold = Math.max(1, Math.min(minAugs, maxPossible));
-
-    // Prestige criteria: Red Pill persists across resets, so resetting to install
-    // more augs is always fine and often faster than grinding XP alone.
+    // Recalculate canPrestige now that NFG levels may have been added
     const canPrestige = (uniqueCount >= threshold) || 
                         (!uniqueRemaining && uniqueCount > 0 && plan.length > 0) ||
-                        (!uniqueRemaining && plan.length >= 5);
+                        (!uniqueRemaining && plan.length >= 10) ||
+                        (donationUnlockAvailable && plan.length > 0) ||
+                        (isStalling && plan.length > 0);
+
+    // Determine the reason for prestige (for HUD/logging)
+    let reason = "";
+    if (canPrestige) {
+        if (uniqueCount >= threshold) reason = "threshold";
+        else if (!uniqueRemaining && uniqueCount > 0) reason = "complete";
+        else if (!uniqueRemaining && plan.length >= 10) reason = "nfg-only";
+        else if (donationUnlockAvailable) reason = "donation-unlock";
+        else if (isStalling) reason = "stall";
+    }
 
     return {
         canPrestige,
         count: uniqueCount,
         threshold,
         blocked: blockedCount,
-        plan
+        plan,
+        reason,
+        donationUnlockAvailable,
+        isStalling
     };
 }
 
@@ -538,13 +594,17 @@ function determineWorkTarget(ns, state, skipFactions = new Set()) {
         }
     } else if (!skipFactions.has("Bachman & Associates") && bnaJoined) {
         const bnaFaction = state.factions["Bachman & Associates"];
-        const bnaRep = bnaFaction.rep;
-        const needsRep = bnaFaction.augs.some(aug => !aug.owned && aug.name !== "NeuroFlux Governor" && aug.repReq > bnaRep);
-        if (needsRep) {
-            return {
-                name: "Bachman & Associates",
-                type: "hacking"
-            };
+        // Skip B&A faction work if donations can handle rep gaps
+        const favorToDonate = state.favorToDonate || 150;
+        if (bnaFaction.favor < favorToDonate) {
+            const bnaRep = bnaFaction.rep;
+            const needsRep = bnaFaction.augs.some(aug => !aug.owned && aug.name !== "NeuroFlux Governor" && aug.repReq > bnaRep);
+            if (needsRep) {
+                return {
+                    name: "Bachman & Associates",
+                    type: "hacking"
+                };
+            }
         }
     }
 
@@ -552,10 +612,14 @@ function determineWorkTarget(ns, state, skipFactions = new Set()) {
     let bestFaction = null;
     let minGap = Infinity;
     let bestWorkType = "hacking";
+    const favorToDonate = state.favorToDonate || 150;
 
     for (const factionName in state.factions) {
         if (skipFactions.has(factionName)) continue;
         const faction = state.factions[factionName];
+
+        // Skip factions that can accept donations — rep gaps handled by donate.js
+        if (faction.favor >= favorToDonate) continue;
 
         for (const aug of faction.augs) {
             if (!aug.owned && aug.name !== "NeuroFlux Governor") {

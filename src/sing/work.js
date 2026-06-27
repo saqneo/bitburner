@@ -71,18 +71,25 @@ export async function main(ns) {
             }
         }
 
-        // Try to apply first (promotions or initial hiring) using exact JobField enum members
+        // Try to apply first (promotions or initial hiring) using all JobField enum members.
+        // Corporate companies use software/business/IT/security, but simpler employers
+        // like Joe's Guns only offer employee/part-time/waiter positions.
         const fields = [
             ns.enums.JobField.software,
             ns.enums.JobField.business,
             ns.enums.JobField.it,
-            ns.enums.JobField.security
+            ns.enums.JobField.security,
+            ns.enums.JobField.agent,
+            ns.enums.JobField.employee,
+            ns.enums.JobField.partTime,
+            ns.enums.JobField.waiter
         ];
         for (const field of fields) {
             try {
                 const job = ns.singularity.applyToCompany(target, field);
                 if (job) {
-                    ns.tprint(`Singularity: Applied to ${target} in ${field} field. Job: ${job}`);
+                    ns.print(`Singularity: Applied to ${target} in ${field} field. Job: ${job}`);
+                    break; // Got a job, stop trying other fields
                 }
             } catch (e) {
                 // Ignore failure on specific fields
@@ -93,17 +100,18 @@ export async function main(ns) {
         const playerJobs = ns.getPlayer().jobs;
         if (target in playerJobs) {
             if (ns.singularity.workForCompany(target, shouldFocus)) {
-                ns.tprint(`Singularity: Started working at ${target}`);
+                ns.tprint(`Singularity: Started working at ${target} (${playerJobs[target]})`);
             } else {
-                ns.tprint(`ERROR: Failed to work for company ${target}`);
+                ns.tprint(`ERROR: Failed to start work at ${target} despite holding job '${playerJobs[target]}'`);
             }
         } else {
-            ns.tprint(`WARNING: Cannot work at ${target} - we do not have a job and do not qualify yet.`);
+            ns.tprint(`WARNING: Cannot work at ${target} — applied to all job fields but none accepted. Player may not meet any position requirements.`);
         }
     } else {
         // Faction work
         if (ns.singularity.workForFaction(target, type, shouldFocus)) {
             ns.tprint(`Singularity: Started working for Faction ${target} (${type})`);
+            ns.rm("/data/sing-work-fail.txt");
         } else {
             // Try other work types if the requested one is not available
             const fallbacks = ["hacking", "field", "security"];
@@ -113,12 +121,14 @@ export async function main(ns) {
                     if (ns.singularity.workForFaction(target, f, shouldFocus)) {
                         ns.tprint(`Singularity: Started fallback work for Faction ${target} (${f})`);
                         success = true;
+                        ns.rm("/data/sing-work-fail.txt");
                         break;
                     }
                 }
             }
             if (!success) {
-                ns.tprint(`ERROR: Failed to work for Faction ${target}`);
+                ns.tprint(`WARNING: Cannot work for Faction '${target}' — stats too low after reset? Signaling manager to fall back.`);
+                ns.write("/data/sing-work-fail.txt", target, "w");
             }
         }
     }

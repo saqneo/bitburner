@@ -9,6 +9,7 @@ export async function main(ns) {
         "avmnite-02h",   // NiteSec
         "I.I.I.I",       // The Black Hand
         "run4theh111z",  // BitRunners
+        "fulcrumassets", // Fulcrum Secret Technologies
         "w0r1d_d43m0n"   // World Daemon
     ];
 

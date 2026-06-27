@@ -1,3 +1,5 @@
+import { CITY_FACTIONS } from '/lib/constants.js';
+
 /** @param {NS} ns */
 export async function main(ns) {
     ns.disableLog("ALL");
@@ -6,10 +8,12 @@ export async function main(ns) {
     const joinedFactions = player.factions;
     const ownedAugs = ns.singularity.getOwnedAugmentations(true); // includes purchased
     const installedAugs = ns.singularity.getOwnedAugmentations(false); // only installed
+    const ownedSet = new Set(ownedAugs);
 
     const state = {
         timestamp: Date.now(),
         factions: {},
+        favorToDonate: ns.getFavorToDonate(),
         ownedAugs: ownedAugs,
         installedAugs: installedAugs,
         pendingInstall: ownedAugs.filter(a => !installedAugs.includes(a)),
@@ -25,7 +29,9 @@ export async function main(ns) {
             jobs: player.jobs,
             city: player.city
         },
-        bnaEntryReqs: []
+        bnaEntryReqs: [],
+        unjoinedCityFactions: {},
+        worldDaemonHackReq: 0
     };
 
     // Query Bachman & Associates entry job requirements dynamically
@@ -48,6 +54,7 @@ export async function main(ns) {
         ns.print(`Error scanning B&A job requirements: ${e}`);
     }
 
+    // Scan joined factions
     for (const faction of joinedFactions) {
         const rep = ns.singularity.getFactionRep(faction);
         const favor = ns.singularity.getFactionFavor(faction);
@@ -67,7 +74,7 @@ export async function main(ns) {
                 repReq,
                 prereqs,
                 stats,
-                owned: ownedAugs.includes(name)
+                owned: ownedSet.has(name)
             });
         }
 
@@ -75,8 +82,38 @@ export async function main(ns) {
             rep,
             favor,
             favorGain,
+            projectedFavor: favor + favorGain,
             augs
         };
+    }
+
+    // Scan unjoined city factions — count unowned non-NFG augs for strategic join decisions
+    const joinedSet = new Set(joinedFactions);
+    for (const cityFaction of CITY_FACTIONS) {
+        if (joinedSet.has(cityFaction)) continue;
+        try {
+            const augNames = ns.singularity.getAugmentationsFromFaction(cityFaction);
+            const unownedAugs = augNames.filter(
+                name => name !== "NeuroFlux Governor" && !ownedSet.has(name)
+            );
+            state.unjoinedCityFactions[cityFaction] = {
+                totalAugs: augNames.length,
+                unownedCount: unownedAugs.length,
+                unownedNames: unownedAugs
+            };
+        } catch (e) {
+            // Faction may not exist in this bitnode
+            ns.print(`Could not scan unjoined city faction ${cityFaction}: ${e}`);
+        }
+    }
+
+    // Get w0r1d_d43m0n required hacking level for endgame tracking
+    try {
+        if (ns.serverExists("w0r1d_d43m0n")) {
+            state.worldDaemonHackReq = ns.getServerRequiredHackingLevel("w0r1d_d43m0n");
+        }
+    } catch (e) {
+        ns.print(`Could not query w0r1d_d43m0n: ${e}`);
     }
 
     // Write to state file

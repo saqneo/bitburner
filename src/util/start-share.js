@@ -30,7 +30,12 @@ export async function main(ns) {
                 ns.kill(SHARE_SCRIPT, "home");
             }
             ns.exec(SHARE_SCRIPT, "home", maxThreads);
-            ns.tprint(`Share-Manager: Updated share power to ${maxThreads} threads.`);
+            // Only tprint on first launch; routine adjustments go to script log
+            if (currentThreads === 0) {
+                ns.tprint(`Share-Manager: Started share power with ${maxThreads} threads.`);
+            } else {
+                ns.print(`Share-Manager: Updated share power ${currentThreads} → ${maxThreads} threads.`);
+            }
         }
     }
 }
