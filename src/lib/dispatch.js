@@ -76,6 +76,13 @@ export function distribute(ns, script, needed, target, hosts, options = {}) {
         if (host === "home") {
             available -= 128; // Reserve 128GB on home for orchestrators and utilities
         }
+
+        if (available < ramCost && ns.scriptRunning("/util/share.js", host)) {
+            ns.print(`distribute: Reclaiming RAM on ${host} by killing /util/share.js`);
+            ns.kill("/util/share.js", host);
+            available = ns.getServerMaxRam(host) - ns.getServerUsedRam(host);
+            if (host === "home") available -= 128;
+        }
         
         if (available < ramCost) {
             // Log only if it's a purchased server to avoid spamming normal tiny servers
@@ -159,11 +166,41 @@ export async function delegateInfrastructure(ns, hosts) {
 }
 
 /**
- * Maximize share power on home with remaining RAM.
+ * Maximize share power on home and purchased servers with remaining RAM.
  * @param {NS} ns
+ * @param {string[]} [hosts=[]]
  */
-export function manageShare(ns) {
-    if (ns.getServerMaxRam("home") - ns.getServerUsedRam("home") > 2.0) {
+export function manageShare(ns, hosts = []) {
+    // 1. Run share on home
+    const homeFree = ns.getServerMaxRam("home") - ns.getServerUsedRam("home");
+    if (homeFree > 4.0) {
         ns.exec("/util/start-share.js", "home", 1);
+    }
+
+    // 2. Run share on other servers (if hosts provided)
+    if (hosts.length === 0) return;
+
+    const shareCost = 4.0; // /util/share.js RAM cost
+    for (const host of hosts) {
+        if (host === "home" || !ns.hasRootAccess(host)) continue;
+
+        let available = ns.getServerMaxRam(host) - ns.getServerUsedRam(host);
+        if (available >= shareCost) {
+            const threads = Math.floor(available / shareCost);
+            if (threads > 0) {
+                if (ns.scriptRunning("/util/share.js", host)) {
+                    // Only restart if we can gain at least 10% more threads or 10 threads
+                    const running = ns.getRunningScript("/util/share.js", host);
+                    const currentThreads = running.threads;
+                    const maxPossible = currentThreads + threads;
+                    if (maxPossible > currentThreads * 1.1 || maxPossible > currentThreads + 10) {
+                        ns.kill("/util/share.js", host);
+                        ns.exec("/util/share.js", host, maxPossible);
+                    }
+                } else {
+                    ns.exec("/util/share.js", host, threads);
+                }
+            }
+        }
     }
 }

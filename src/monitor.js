@@ -59,6 +59,14 @@ export async function main(ns) {
             };
         }
 
+        let pipelines = {};
+        if (ns.fileExists("/data/midgame-status.json", "home")) {
+            try {
+                const statusData = JSON.parse(ns.read("/data/midgame-status.json"));
+                pipelines = statusData.pipelines || {};
+            } catch (e) {}
+        }
+
         // Store globally in window state using eval to bypass 25GB static RAM charge
         eval("window").customHudSwarm = {
             stage: stage.toUpperCase(),
@@ -73,6 +81,7 @@ export async function main(ns) {
             primaryTarget: primaryTarget,
             incomeRate: incomeRate,
             expRate: expRate,
+            pipelines: pipelines,
             singStatus: eval("window").customHudSing || null
         };
 

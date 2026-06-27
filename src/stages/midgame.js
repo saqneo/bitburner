@@ -6,7 +6,9 @@ import {
     HACK_FRACTION, 
     GROW_SAFETY_FACTOR, 
     MAINTENANCE_INTERVAL_MS,
-    TICK_RATE_MS
+    TICK_RATE_MS,
+    BATCH_SPACING_MS,
+    CYCLE_PERIOD_MS
 } from '/lib/constants.js';
 
 /** @param {NS} ns */
@@ -31,162 +33,271 @@ export async function main(ns) {
         }
     }
 
-    const activeBatches = new Map(); // target -> [weaken_pids]
-    const targetStates = new Map();  // target -> "prep" | "harvest"
-    const lastLaunchTimes = new Map(); // target -> timestamp
+    // --- State Tracking ---
+    // Instead of tracking wave completion, we track the next landing slot for each target's pipeline.
+    const nextLanding = new Map();   // target -> next landing timestamp
+    const prepPids = new Map();      // target -> pid (only for prep, which is serial)
     let nextMaintenance = 0;
-    let currentBatchId = 1;
+    let batchIdCounter = 1;
+
+    // Cache worker RAM costs once (they don't change at runtime)
+    const HACK_RAM = ns.getScriptRam("/hack/hack.js");
+    const GROW_RAM = ns.getScriptRam("/hack/grow.js");
+    const WEAKEN_RAM = ns.getScriptRam("/hack/weaken.js");
 
     // Outer orchestrator loop
     while (true) {
         const hosts = getAllNodes(ns);
         const targets = getRankedTargets(ns, hosts);
+        const now = Date.now();
 
         // Infrastructure: Run periodically
-        if (Date.now() > nextMaintenance) {
+        if (now > nextMaintenance) {
             await delegateInfrastructure(ns, hosts);
+            ns.exec("/util/start-stock-trader.js", "home", 1);
             if (targets.length > 0) {
                 ns.print(`Midgame: Maintenance done. Top Targets: [${targets.slice(0, 3).join(", ")}]`);
             }
-            nextMaintenance = Date.now() + MAINTENANCE_INTERVAL_MS;
+            nextMaintenance = now + MAINTENANCE_INTERVAL_MS;
         }
 
-        // Loop over ranked targets and manage their batches
+        // Calculate total free RAM across the cluster (snapshot once per tick)
+        let clusterFreeRam = getClusterFreeRam(ns, hosts);
+
         for (const target of targets) {
-            if (!activeBatches.has(target)) {
-                activeBatches.set(target, []);
-            }
+            // --- B. Clean up finished prep PIDs ---
+            const prepPid = prepPids.get(target);
+            if (prepPid && ns.isRunning(prepPid)) continue; // prep still running
+            prepPids.delete(target);
 
-            // A. Clean up finished PIDs
-            let pids = activeBatches.get(target).filter(pid => ns.isRunning(pid));
-            activeBatches.set(target, pids);
-
-            // B. Query target metrics
+            // --- C. Query target metrics ---
             const server = ns.getServer(target);
             const sec = server.hackDifficulty;
             const minSec = server.minDifficulty;
             const money = server.moneyAvailable;
             const maxMoney = server.moneyMax;
 
-            // C. State Management
-            // If the server has drifted too far (money below 80% or security above min + 0.5),
-            // immediately trigger a "prep" state to let the server heal, even if PIDs are active.
-            // Otherwise, if the pipeline is dry, check if we need prep or can harvest.
-            const isUnprepped = (sec > minSec + 0.5) || (money < maxMoney * 0.80);
-            if (isUnprepped || !targetStates.has(target)) {
-                targetStates.set(target, "prep");
-            } else if (pids.length === 0) {
-                const needsPrep = (sec > minSec + 0.1) || (money < maxMoney * 0.90);
-                targetStates.set(target, needsPrep ? "prep" : "harvest");
+            // --- D. Prep if needed ---
+            const needsPrep = (sec > minSec + 0.1) || (money < maxMoney * 0.90);
+            if (needsPrep) {
+                // Clear any harvest pipeline to prevent batch desync during prep
+                nextLanding.delete(target);
+                runPrep(ns, target, server, hosts, prepPids, batchIdCounter);
+                batchIdCounter++;
+                continue;
             }
 
-            const state = targetStates.get(target);
+            // --- E. Harvest: Calculate HWGW batch parameters ---
+            const hackPercentPerThread = ns.hackAnalyze(target);
+            if (hackPercentPerThread <= 0) continue;
 
-            if (state === "prep") {
-                // To avoid over-allocating during prep, we only run one prep batch at a time
-                if (pids.length > 0) {
-                    continue;
-                }
+            const hackThreads = Math.max(1, Math.floor(HACK_FRACTION / hackPercentPerThread));
 
-                if (sec > minSec + 0.1) {
-                    // Prep Security (Weaken-only)
-                    const weakenThreads = Math.ceil((sec - minSec) / 0.05);
-                    if (weakenThreads > 0) {
-                        const batchId = currentBatchId++;
-                        if (canFitBatch(ns, hosts, 0, 0, weakenThreads)) {
-                            const pid = distribute(ns, "/hack/weaken.js", weakenThreads, target, hosts, { batchId });
-                            if (pid > 0) {
-                                pids.push(pid);
-                                ns.print(`Midgame: Prepping ${target} (Security) -> Weaken x${weakenThreads} (PID: ${pid})`);
-                            }
-                        }
-                    }
-                } else if (money < maxMoney * 0.90) {
-                    // Prep Money (Grow + Weaken)
-                    const multiplier = maxMoney / Math.max(money, 1);
-                    const baseGrowThreads = ns.growthAnalyze(target, multiplier);
-                    const growThreads = Math.ceil(baseGrowThreads * GROW_SAFETY_FACTOR);
-                    const growSec = ns.growthAnalyzeSecurity(growThreads, target);
-                    const weakenThreads = Math.ceil(growSec / 0.05);
+            // Weaken₁: cancel hack security
+            const hackSec = ns.hackAnalyzeSecurity(hackThreads, target);
+            const weakenPerThread = ns.weakenAnalyze(1, 1);
+            const weaken1Threads = Math.max(1, Math.ceil(hackSec / weakenPerThread));
 
-                    if (growThreads > 0) {
-                        const batchId = currentBatchId++;
-                        if (canFitBatch(ns, hosts, 0, growThreads, weakenThreads)) {
-                            distribute(ns, "/hack/grow.js", growThreads, target, hosts, { batchId });
-                            const pid = distribute(ns, "/hack/weaken.js", weakenThreads, target, hosts, { batchId });
-                            if (pid > 0) {
-                                pids.push(pid);
-                                ns.print(`Midgame: Prepping ${target} (Money) -> Grow x${growThreads}, Weaken x${weakenThreads} (PID: ${pid})`);
-                            }
-                        }
-                    }
-                }
-            } else {
-                // Harvest Phase (HWGW Batches) - Saturation pipeline
-                if (pids.length >= MAX_CONCURRENT_BATCHES) {
-                    continue;
-                }
+            // Grow: restore money (1/(1-fraction) multiplier to go from (1-frac)*max back to max)
+            const growMultiplier = 1 / (1 - HACK_FRACTION);
+            const baseGrowThreads = ns.growthAnalyze(target, growMultiplier);
+            const growThreads = Math.max(1, Math.ceil(baseGrowThreads * GROW_SAFETY_FACTOR));
 
-                // Enforce a staggered launch spacing of 100ms per target
-                // This spaces out the landing times so that batches land sequentially (H1->G1->W1->H2->G2->W2)
-                const lastLaunch = lastLaunchTimes.get(target) || 0;
-                if (Date.now() - lastLaunch < 100) {
-                    continue;
-                }
+            // Weaken₂: cancel grow security
+            const growSec = ns.growthAnalyzeSecurity(growThreads, target);
+            const weaken2Threads = Math.max(1, Math.ceil(growSec / weakenPerThread));
 
-                const hackPercentPerThread = ns.hackAnalyze(target);
-                if (hackPercentPerThread <= 0) continue;
+            // --- F. Calculate batch RAM cost ---
+            const batchRam = (hackThreads * HACK_RAM) +
+                             (weaken1Threads * WEAKEN_RAM) +
+                             (growThreads * GROW_RAM) +
+                             (weaken2Threads * WEAKEN_RAM);
 
-                // Calculate required threads for steady-state HWGW
-                const hackThreads = Math.floor(HACK_FRACTION / hackPercentPerThread);
-                if (hackThreads <= 0) continue;
+            if (batchRam <= 0) continue;
 
-                const hackSec = ns.hackAnalyzeSecurity(hackThreads, target);
-                const weakenThreadsForHack = Math.ceil(hackSec / 0.05);
+            // --- G. Calculate timing ---
+            const tWeaken = ns.getWeakenTime(target);
+            const tGrow = ns.getGrowTime(target);
+            const tHack = ns.getHackTime(target);
 
-                const baseGrowThreads = ns.growthAnalyze(target, 1 / (1 - HACK_FRACTION));
-                const growThreads = Math.ceil(baseGrowThreads * GROW_SAFETY_FACTOR);
-                const growSec = ns.growthAnalyzeSecurity(growThreads, target);
-                const weakenThreadsForGrow = Math.ceil(growSec / 0.05);
+            // Earliest landing time must allow the longest execution time (weaken) plus scheduling buffer
+            const schedulingBuffer = 200; 
+            const earliestLanding = now + tWeaken + schedulingBuffer;
 
-                const weakenThreads = weakenThreadsForHack + weakenThreadsForGrow;
-
-                // Spaced Delay Calculations
-                const tWeaken = ns.getWeakenTime(target);
-                const tGrow = ns.getGrowTime(target);
-                const tHack = ns.getHackTime(target);
-                const spacing = 25; // 25ms staggered step spacing between H, G, W components
-
-                const weakenDelay = 0;
-                const growDelay = Math.max(0, tWeaken - tGrow - spacing);
-                const hackDelay = Math.max(0, tWeaken - tHack - 2 * spacing);
-
-                if (canFitBatch(ns, hosts, hackThreads, growThreads, weakenThreads)) {
-                    const batchId = currentBatchId++;
-                    
-                    distribute(ns, "/hack/hack.js", hackThreads, target, hosts, { batchId, delay: hackDelay });
-                    distribute(ns, "/hack/grow.js", growThreads, target, hosts, { batchId, delay: growDelay });
-                    const pid = distribute(ns, "/hack/weaken.js", weakenThreads, target, hosts, { batchId, delay: weakenDelay });
-
-                    if (pid > 0) {
-                        pids.push(pid);
-                        lastLaunchTimes.set(target, Date.now());
-                        ns.print(`Midgame: Dispatched staggered HWGW batch #${batchId} for ${target}: H=${hackThreads} (delay: ${hackDelay.toFixed(0)}ms), G=${growThreads} (delay: ${growDelay.toFixed(0)}ms), W=${weakenThreads}`);
-                    }
-                }
+            // Calculate next available landing time slot
+            let landingTime = nextLanding.get(target) || earliestLanding;
+            if (landingTime < earliestLanding) {
+                landingTime = earliestLanding;
             }
+
+            // Cap the lookahead pipeline window to 1 weaken cycle into the future to avoid hacking-level drift
+            const maxLandingTime = earliestLanding + tWeaken;
+
+            // --- H. Pipelining: Queue batches into future slots ---
+            let scheduled = 0;
+            while (landingTime <= maxLandingTime && clusterFreeRam >= batchRam) {
+                const hackDelay    = Math.round(landingTime - tHack - now);
+                const weaken1Delay = Math.round(landingTime + BATCH_SPACING_MS - tWeaken - now);
+                const growDelay    = Math.round(landingTime + 2 * BATCH_SPACING_MS - tGrow - now);
+                const weaken2Delay = Math.round(landingTime + 3 * BATCH_SPACING_MS - tWeaken - now);
+
+                if (hackDelay < 0 || weaken1Delay < 0 || growDelay < 0 || weaken2Delay < 0) {
+                    // Safety check: if somehow delays fall negative (should not happen), slip slot forward
+                    landingTime += CYCLE_PERIOD_MS;
+                    continue;
+                }
+
+                // Unique batchId per script execution
+                const baseBatchId = batchIdCounter;
+                batchIdCounter += 4;
+
+                const h  = distribute(ns, "/hack/hack.js",   hackThreads,    target, hosts, { batchId: baseBatchId,     delay: hackDelay });
+                const w1 = distribute(ns, "/hack/weaken.js", weaken1Threads, target, hosts, { batchId: baseBatchId + 1, delay: weaken1Delay });
+                const g  = distribute(ns, "/hack/grow.js",   growThreads,    target, hosts, { batchId: baseBatchId + 2, delay: growDelay });
+                const w2 = distribute(ns, "/hack/weaken.js", weaken2Threads, target, hosts, { batchId: baseBatchId + 3, delay: weaken2Delay });
+
+                if (!h || !w1 || !g || !w2) {
+                    // Failed to fit batch in RAM (fragmented/low RAM)
+                    break;
+                }
+
+                scheduled++;
+                clusterFreeRam -= batchRam;
+                landingTime += CYCLE_PERIOD_MS;
+            }
+
+            if (scheduled > 0) {
+                nextLanding.set(target, landingTime);
+                ns.print(`Midgame: Pipelined ${scheduled} HWGW batches for ${target} ` +
+                         `(Next landing in ${((landingTime - now) / 1000).toFixed(1)}s, ` +
+                         `${(scheduled * batchRam).toFixed(0)} GB)`);
+            }
+
+            // If we've used most of the cluster RAM, stop trying more targets
+            if (clusterFreeRam < batchRam) break;
         }
 
-        // Manage Share on Home RAM
-        manageShare(ns);
+        // Write pipeline status for diagnostics
+        const statusFile = "/data/midgame-status.json";
+        const statusData = {
+            timestamp: Date.now(),
+            pipelines: {}
+        };
+        for (const [target, landingTime] of nextLanding.entries()) {
+            statusData.pipelines[target] = {
+                nextLandingTime: landingTime,
+                timeLeftMs: Math.max(0, landingTime - Date.now()),
+                isPrepping: prepPids.has(target)
+            };
+        }
+        for (const [target, pid] of prepPids.entries()) {
+            if (!statusData.pipelines[target]) {
+                statusData.pipelines[target] = {
+                    nextLandingTime: 0,
+                    timeLeftMs: 0,
+                    isPrepping: true
+                };
+            }
+        }
+        await ns.write(statusFile, JSON.stringify(statusData, null, 2), "w");
 
-        // Standard tick sleep
+        // Manage Share across the whole cluster with any remaining idle RAM
+        manageShare(ns, hosts);
+
+        // Sleep until next tick. Check every tick to queue new pipeline slots.
         await ns.sleep(TICK_RATE_MS);
     }
 }
 
 /**
- * Dry-run allocator to ensure the network can fully accommodate the threads of a batch.
+ * Runs a prep cycle (weaken-only or grow+weaken) for a target that isn't at ideal levels.
+ * Only one prep batch runs at a time per target to avoid over-allocation.
+ * @param {NS} ns
+ * @param {string} target
+ * @param {Object} server - ns.getServer() result
+ * @param {string[]} hosts
+ * @param {Map} prepPids - Map of target -> prep PID
+ * @param {number} batchId
+ */
+function runPrep(ns, target, server, hosts, prepPids, batchId) {
+    const sec = server.hackDifficulty;
+    const minSec = server.minDifficulty;
+    const money = server.moneyAvailable;
+    const maxMoney = server.moneyMax;
+    const weakenPerThread = ns.weakenAnalyze(1, 1);
+
+    if (sec > minSec + 0.1) {
+        // Prep Security (Weaken-only)
+        let weakenThreads = Math.ceil((sec - minSec) / weakenPerThread);
+        const weakenRam = ns.getScriptRam("/hack/weaken.js");
+        const clusterFreeRam = getClusterFreeRam(ns, hosts);
+        const maxPossibleThreads = Math.floor(clusterFreeRam / weakenRam);
+
+        if (weakenThreads > maxPossibleThreads) {
+            weakenThreads = maxPossibleThreads;
+        }
+
+        if (weakenThreads > 0) {
+            const pid = distribute(ns, "/hack/weaken.js", weakenThreads, target, hosts, { batchId });
+            if (pid > 0) {
+                prepPids.set(target, pid);
+                ns.print(`Midgame: Prepping ${target} (Security) -> Weaken x${weakenThreads} (Scaled to fit available RAM)`);
+            }
+        }
+    } else if (money < maxMoney * 0.90) {
+        // Prep Money (Grow + Weaken)
+        const multiplier = maxMoney / Math.max(money, 1);
+        const baseGrowThreads = ns.growthAnalyze(target, multiplier);
+        let growThreads = Math.ceil(baseGrowThreads * GROW_SAFETY_FACTOR);
+        let growSec = ns.growthAnalyzeSecurity(growThreads, target);
+        let weakenThreads = Math.ceil(growSec / weakenPerThread);
+
+        const growRam = ns.getScriptRam("/hack/grow.js");
+        const weakenRam = ns.getScriptRam("/hack/weaken.js");
+        const clusterFreeRam = getClusterFreeRam(ns, hosts);
+
+        const batchRam = (growThreads * growRam) + (weakenThreads * weakenRam);
+        if (batchRam > clusterFreeRam) {
+            const scale = clusterFreeRam / batchRam;
+            growThreads = Math.floor(growThreads * scale);
+            if (growThreads > 0) {
+                growSec = ns.growthAnalyzeSecurity(growThreads, target);
+                weakenThreads = Math.max(1, Math.ceil(growSec / weakenPerThread));
+            } else {
+                weakenThreads = 0;
+            }
+        }
+
+        if (growThreads > 0 && weakenThreads > 0) {
+            distribute(ns, "/hack/grow.js", growThreads, target, hosts, { batchId });
+            const pid = distribute(ns, "/hack/weaken.js", weakenThreads, target, hosts, { batchId: batchId + 1 });
+            if (pid > 0) {
+                prepPids.set(target, pid);
+                ns.print(`Midgame: Prepping ${target} (Money) -> Grow x${growThreads}, Weaken x${weakenThreads} (Scaled to fit available RAM)`);
+            }
+        }
+    }
+}
+
+/**
+ * Calculates total free RAM across the cluster (excluding home reserve).
+ * @param {NS} ns
+ * @param {string[]} hosts
+ * @returns {number} Available RAM in GB.
+ */
+function getClusterFreeRam(ns, hosts) {
+    let total = 0;
+    for (const host of hosts) {
+        if (!ns.hasRootAccess(host)) continue;
+        let available = ns.getServerMaxRam(host) - ns.getServerUsedRam(host);
+        if (host === "home") available = Math.max(0, available - 128);
+        if (available > 0) total += available;
+    }
+    return total;
+}
+
+/**
+ * Dry-run allocator to ensure the network can fully accommodate a batch's threads.
  * @param {NS} ns
  * @param {string[]} hosts
  * @param {number} hackThreads

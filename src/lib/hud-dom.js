@@ -54,7 +54,7 @@ export function createOrGetTopBar() {
                 bar.style.width = "auto";
             }
             const isCollapsed = window.customHudCollapsed === true;
-            bar.style.height = isCollapsed ? "32px" : "138px";
+            bar.style.height = isCollapsed ? "32px" : "176px";
         }
     }
     
@@ -111,7 +111,7 @@ export function createOrGetTopBar() {
             bar.style.height = "32px";
             bar.classList.add("collapsed");
         } else {
-            bar.style.height = "138px"; // Increased from 132px
+            bar.style.height = "176px"; // Increased from 138px to fit 7 rows
         }
         
         // Sleek Draggable Grab Bar Icon Element (attached directly to parent so it is never overwritten)
@@ -185,33 +185,43 @@ export function createOrGetTopBar() {
         contentDiv.style.display = "flex";
         contentDiv.style.alignItems = "center";
         
-        // Add toggle button floating tab at bottom center
+        // Add toggle button vertical strip on the far right
         const toggleBtn = doc.createElement("div");
         toggleBtn.id = "hud-toggle-btn";
         toggleBtn.style.position = "absolute";
+        toggleBtn.style.top = "0px";
         toggleBtn.style.bottom = "0px";
-        toggleBtn.style.left = "50%";
-        toggleBtn.style.transform = "translateX(-50%)";
-        toggleBtn.style.width = "36px";
-        toggleBtn.style.height = "10px";
-        toggleBtn.style.background = "rgba(10, 15, 30, 0.95)";
-        toggleBtn.style.border = "1px solid rgba(56, 189, 248, 0.22)";
-        toggleBtn.style.borderTop = "none";
-        toggleBtn.style.borderRadius = "0 0 6px 6px";
+        toggleBtn.style.right = "0px";
+        toggleBtn.style.width = "28px";
+        toggleBtn.style.height = "100%";
+        toggleBtn.style.background = "rgba(10, 15, 30, 0.5)";
+        toggleBtn.style.borderLeft = "1px solid rgba(56, 189, 248, 0.22)";
         toggleBtn.style.color = "#38bdf8";
-        toggleBtn.style.fontSize = "7px";
+        toggleBtn.style.fontSize = "14px";
         toggleBtn.style.display = "flex";
         toggleBtn.style.alignItems = "center";
         toggleBtn.style.justifyContent = "center";
         toggleBtn.style.cursor = "pointer";
         toggleBtn.style.zIndex = "10000";
+        toggleBtn.style.transition = "background 0.2s, color 0.2s, text-shadow 0.2s";
         toggleBtn.innerText = isCollapsed ? "▼" : "▲";
         
+        toggleBtn.addEventListener("mouseenter", () => {
+            toggleBtn.style.background = "rgba(56, 189, 248, 0.15)";
+            toggleBtn.style.color = "#ffffff";
+            toggleBtn.style.textShadow = "0 0 8px #38bdf8";
+        });
+        toggleBtn.addEventListener("mouseleave", () => {
+            toggleBtn.style.background = "rgba(10, 15, 30, 0.5)";
+            toggleBtn.style.color = "#38bdf8";
+            toggleBtn.style.textShadow = "none";
+        });
+
         toggleBtn.addEventListener("click", () => {
             const collapsed = bar.classList.toggle("collapsed");
             window.customHudCollapsed = collapsed;
             toggleBtn.innerText = collapsed ? "▼" : "▲";
-            bar.style.height = collapsed ? "32px" : "138px";
+            bar.style.height = collapsed ? "32px" : "176px";
             
             // Re-render instantly
             renderHud();
@@ -351,7 +361,7 @@ function renderCollapsedView(container, swarm, stock) {
     }
     
     container.innerHTML = `
-        <div style="width: 100%; height: 32px; display: flex; align-items: center; justify-content: space-between; padding-right: 14px;">
+        <div style="width: 100%; height: 32px; display: flex; align-items: center; justify-content: space-between; padding-right: 42px;">
             ${html}
         </div>
     `;
@@ -487,11 +497,26 @@ function renderExpandedView(container, swarm, stock) {
     let col3Html = "";
     if (swarm && swarm.topTargets && swarm.topTargets.length > 0) {
         const total = swarm.threads || 1;
-        const rows = swarm.topTargets.slice(0, 4).map((t, idx) => {
+        const rows = swarm.topTargets.slice(0, 7).map((t, idx) => {
             const pct = (t.threads / total) * 100;
+            
+            // Render pipeline landing info if available
+            let pipeInfo = "";
+            if (swarm.pipelines && swarm.pipelines[t.name]) {
+                const pipe = swarm.pipelines[t.name];
+                if (pipe.isPrepping) {
+                    pipeInfo = `<span style="color: #fca5a5; font-size: 9px; font-weight: normal; margin-left: 4px;">[PREP]</span>`;
+                } else if (pipe.nextLandingTime > 0) {
+                    const timeLeftSec = Math.max(0, (pipe.nextLandingTime - Date.now()) / 1000);
+                    pipeInfo = `<span style="color: #4ade80; font-size: 9px; font-weight: normal; margin-left: 4px;">[${timeLeftSec.toFixed(0)}s]</span>`;
+                }
+            }
+
             return `
                 <div style="display: flex; justify-content: space-between; margin-top: 1px; font-size: 10px;">
-                    <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 95px; color: #e2e8f0;">${idx+1}. ${t.name}</span>
+                    <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 140px; color: #e2e8f0;">
+                        ${idx+1}. ${t.name}${pipeInfo}
+                    </span>
                     <span style="color: #cbd5e1; font-weight: bold;">${formatNumberHUD(t.threads)} (${pct.toFixed(0)}%)</span>
                 </div>
             `;
@@ -499,7 +524,7 @@ function renderExpandedView(container, swarm, stock) {
         
         col3Html = `
             <div style="display: flex; flex-direction: column; justify-content: space-between; height: 100%; font-size: 11px;">
-                <div style="color: #ffd700; font-weight: bold; border-bottom: 1px solid rgba(148, 163, 184, 0.12); padding-bottom: 1px;">SWARM FOCUS (TOP 4)</div>
+                <div style="color: #ffd700; font-weight: bold; border-bottom: 1px solid rgba(148, 163, 184, 0.12); padding-bottom: 1px;">SWARM FOCUS (TOP 7)</div>
                 <div style="display: flex; flex-direction: column; gap: 1px; margin-top: 2px;">
                     ${rows}
                 </div>
@@ -518,7 +543,7 @@ function renderExpandedView(container, swarm, stock) {
         
         let tableRows = "";
         if (stock.allStocks && stock.allStocks.length > 0) {
-            tableRows = stock.allStocks.slice(0, 4).map(row => {
+            tableRows = stock.allStocks.slice(0, 7).map(row => {
                 const fColor = row.forecast >= 0.65 ? "#4ade80" : (row.forecast <= 0.45 ? "#f87171" : "#cbd5e1");
                 const holdingText = row.posText !== "None" ? `<span style="color: #c084fc; font-weight: bold;">${row.posText}</span>` : `<span style="color: #64748b;">-</span>`;
                 const rowPlColor = row.plText.startsWith("+") ? "#4ade80" : (row.plText.startsWith("-") ? "#f87171" : "#e2e8f0");
@@ -569,7 +594,7 @@ function renderExpandedView(container, swarm, stock) {
     }
 
     container.innerHTML = `
-        <div style="display: grid; grid-template-columns: 1.1fr 1.1fr 1.1fr 1.8fr; gap: 14px; width: 100%; height: 114px; padding-bottom: 8px; padding-right: 14px;">
+        <div style="display: grid; grid-template-columns: 1.1fr 1.1fr 1.1fr 1.8fr; gap: 14px; width: 100%; height: 152px; padding-bottom: 8px; padding-right: 42px;">
             <div style="border-right: 1px solid rgba(148, 163, 184, 0.12); padding-right: 10px; height: 100%;">${col1Html}</div>
             <div style="border-right: 1px solid rgba(148, 163, 184, 0.12); padding-right: 10px; height: 100%;">${col2Html}</div>
             <div style="border-right: 1px solid rgba(148, 163, 184, 0.12); padding-right: 10px; height: 100%;">${col3Html}</div>
