@@ -271,15 +271,25 @@ export async function main(ns) {
             if (workTarget) {
                 // Focus logic
                 let shouldFocus = false;
-                if (workTarget.name === lastWorkTarget && workTarget.type === lastWorkType) {
-                    const elapsed = Date.now() - lastWorkStartTime;
-                    if (elapsed > SING_FOCUS_DELAY_MS) {
-                        shouldFocus = true;
+                const hasFocusImplant = state.installedAugs && state.installedAugs.includes("Neuroreceptor Management Implant");
+                if (!hasFocusImplant) {
+                    if (workTarget.name === lastWorkTarget && workTarget.type === lastWorkType) {
+                        const elapsed = Date.now() - lastWorkStartTime;
+                        if (elapsed > SING_FOCUS_DELAY_MS) {
+                            shouldFocus = true;
+                        }
+                    } else {
+                        lastWorkTarget = workTarget.name;
+                        lastWorkType = workTarget.type;
+                        lastWorkStartTime = Date.now();
                     }
                 } else {
-                    lastWorkTarget = workTarget.name;
-                    lastWorkType = workTarget.type;
-                    lastWorkStartTime = Date.now();
+                    // If we have the focus implant, we never steal focus, but keep tracking target for consistency
+                    if (workTarget.name !== lastWorkTarget || workTarget.type !== lastWorkType) {
+                        lastWorkTarget = workTarget.name;
+                        lastWorkType = workTarget.type;
+                        lastWorkStartTime = Date.now();
+                    }
                 }
 
                 await runTask("/sing/work.js", [workTarget.name, workTarget.type, shouldFocus ? "true" : "false"]);
