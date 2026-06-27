@@ -12,12 +12,15 @@ export async function main(ns) {
     });
 
     // Constants for trade logic (Long Only)
-    const WINDOW_SIZE = 20;            // Number of historical ticks to estimate forecast (larger = less noise)
-    const INVERSION_WINDOW = 6;        // Recent ticks checked for forecast inversion detection
-    const BUY_THRESHOLD = 0.65;        // Estimated forecast >= 65% -> Buy Long
-    const SELL_THRESHOLD = 0.50;       // Estimated forecast <= 50% -> Sell at neutral (don't wait for bearish)
+    const WINDOW_SIZE = 20;            // Number of historical ticks to display on dashboard
+    const EWMA_ALPHA = 0.10;           // EWMA decay factor (alpha). Lower = smoother/slower, higher = faster/noisier.
+    const BUY_THRESHOLD = 0.60;        // EWMA forecast >= 60% -> Buy Long
+    const SELL_THRESHOLD = 0.50;       // EWMA forecast <= 50% -> Sell Long (exit at neutral/bearish)
+    const MIN_HISTORY = 8;             // Minimum ticks before we can buy a stock
     const MIN_TRADE_VALUE = 5000000;   // Don't trade if position value is < $5M (avoids fee cannibalization)
     const COMMISSION = 100000;         // Flat fee per transaction ($100k)
+    const FLIP_CORRELATION_THRESHOLD = 0.60; // Ratio of reversing stocks to trigger market-wide flip
+    const STREAK_LENGTH = 5;           // Consecutive counter-trend ticks for per-stock flip detection
 
     // Verification of API requirements
     if (!ns.stock.hasWseAccount() || !ns.stock.hasTixApiAccess()) {
@@ -31,20 +34,16 @@ export async function main(ns) {
     
     // Internal state variables
     const lastPrices = new Map();
-    const history = new Map(); // symbol -> array of price directions [1 (up), 0 (down)]
+    const history = new Map();         // symbol -> array of raw price directions [1 (up), 0 (down)]
+    const ewmas = new Map();           // symbol -> EWMA forecast probability [0.0 - 1.0]
     let tickCount = 0;
-    let totalRealizedPL = 0;   // Strictly tracks stock trader's closed transaction profits
+    let totalRealizedPL = 0;           // Strictly tracks stock trader's closed transaction profits
 
-    // Initialize prices and history maps with a neutral prior (alternating 1s and 0s)
-    // to prevent early-tick 10/10 or 0/10 spikes and start all stocks at exactly 50% (5/10)
+    // Initialize prices, history, and EWMA maps
     for (const sym of symbols) {
         lastPrices.set(sym, ns.stock.getPrice(sym));
-        
-        const baseline = [];
-        for (let i = 0; i < WINDOW_SIZE; i++) {
-            baseline.push(i % 2); // alternating [0, 1, 0, 1] for exactly 50% forecast
-        }
-        history.set(sym, baseline);
+        history.set(sym, []);          // Start with clean slate (no neutral prior seeding)
+        ewmas.set(sym, 0.50);          // Neutral start
     }
 
     ns.print("Initializing price tracking... Waiting for market ticks.");
@@ -72,44 +71,114 @@ export async function main(ns) {
         // --- MARKET UPDATE DETECTED ---
         tickCount++;
 
-        // Update movement history for all stocks
+        const has4S = ns.stock.has4SDataTixApi();
+
+        // 1. Gather movement directions (always do this so raw history displays correctly on visual bar)
+        const currentDirs = new Map();
         for (const sym of symbols) {
             const newPrice = currentPrices.get(sym);
             const oldPrice = lastPrices.get(sym);
-            const h = history.get(sym);
-
-            // Record movement direction (1 for up, 0 for down)
+            let dir;
             if (newPrice > oldPrice) {
-                h.push(1);
+                dir = 1;
             } else if (newPrice < oldPrice) {
-                h.push(0);
+                dir = 0;
             } else {
-                // If price remained exactly unchanged, maintain the previous direction if exists, else up
-                h.push(h.length > 0 ? h[h.length - 1] : 1);
+                const h = history.get(sym);
+                dir = h.length > 0 ? h[h.length - 1] : 1;
             }
+            currentDirs.set(sym, dir);
 
-            // Bound history length to sliding window size
+            const h = history.get(sym);
+            h.push(dir);
             if (h.length > WINDOW_SIZE) {
                 h.shift();
             }
+        }
 
-            // Inversion Detection: If recent ticks strongly contradict the overall trend,
-            // the stock's hidden forecast likely flipped. Reset history to prevent stale
-            // data from delaying sell signals or generating false buy signals.
-            if (h.length >= WINDOW_SIZE) {
-                const recentSlice = h.slice(-INVERSION_WINDOW);
-                const recentForecast = recentSlice.reduce((a, b) => a + b, 0) / INVERSION_WINDOW;
-                const overallForecast = estimateForecast(h);
+        let marketFlipDetected = false;
+        let flipRealizedPL = 0;
 
-                // Trigger: recent and overall are on opposite sides of 50% with meaningful gap
-                const crossed = (recentForecast > 0.5) !== (overallForecast > 0.5);
-                const divergence = Math.abs(overallForecast - recentForecast);
-                if (crossed && divergence >= 0.35) {
-                    history.set(sym, [...recentSlice]);
+        if (has4S) {
+            // --- 4S MODE ---
+            // Read forecast directly from the game's 100% accurate API
+            for (const sym of symbols) {
+                ewmas.set(sym, ns.stock.getForecast(sym));
+            }
+        } else {
+            // --- PRE-4S ESTIMATOR MODE ---
+            // Check for market-wide reversals
+            let reversalCount = 0;
+            let activeStocksCount = 0;
+
+            for (const sym of symbols) {
+                const dir = currentDirs.get(sym);
+                const prevEwma = ewmas.get(sym);
+                // Only count stocks with a strong, established trend (>= 58% or <= 42%)
+                if (Math.abs(prevEwma - 0.50) >= 0.08) {
+                    activeStocksCount++;
+                    const isTrendUp = prevEwma > 0.50;
+                    const isTickUp = dir === 1;
+                    if (isTrendUp !== isTickUp) {
+                        reversalCount++;
+                    }
                 }
             }
 
-            lastPrices.set(sym, newPrice);
+            const reversalRatio = activeStocksCount > 0 ? reversalCount / activeStocksCount : 0;
+            // Require at least 6 active trending stocks to make a confident market-wide assessment
+            if (activeStocksCount >= 6 && reversalRatio >= FLIP_CORRELATION_THRESHOLD) {
+                marketFlipDetected = true;
+                ns.print(`!!! MARKET WIDE FLIP DETECTED !!! (${(reversalRatio * 100).toFixed(0)}% of ${activeStocksCount} active stocks reversed direction)`);
+            }
+
+            if (marketFlipDetected) {
+                // Immediate liquidation
+                for (const sym of symbols) {
+                    const [sharesLong, avgPriceLong] = ns.stock.getPosition(sym);
+                    if (sharesLong > 0) {
+                        const sellPrice = ns.stock.sellStock(sym, sharesLong);
+                        if (sellPrice > 0) {
+                            const tradePL = sharesLong * (sellPrice - avgPriceLong) - 2 * COMMISSION;
+                            flipRealizedPL += tradePL;
+                            ns.print(`[FLIP SELL] Liquidated ${sym}: ${sharesLong.toLocaleString()} shares. P/L: ${formatPL(tradePL)}`);
+                        }
+                    }
+                    ewmas.set(sym, 0.50);
+                    history.get(sym).length = 0; // Clear history
+                }
+            } else {
+                // Normal update: Update history, EWMA, and check per-stock streaks
+                for (const sym of symbols) {
+                    const dir = currentDirs.get(sym);
+                    const h = history.get(sym);
+                    
+                    const prevEwma = ewmas.get(sym);
+                    let newEwma = prevEwma * (1 - EWMA_ALPHA) + dir * EWMA_ALPHA;
+
+                    // Per-stock streak detection (individual flip reset)
+                    if (h.length >= STREAK_LENGTH) {
+                        const recentStreak = h.slice(-STREAK_LENGTH);
+                        const allDown = recentStreak.every(x => x === 0);
+                        const allUp = recentStreak.every(x => x === 1);
+
+                        if (newEwma > 0.55 && allDown) {
+                            newEwma = 0.40; // Force bearish EWMA to trigger sell
+                            h.length = 0;   // Reset history
+                        } else if (newEwma < 0.45 && allUp) {
+                            newEwma = 0.60; // Force bullish EWMA
+                            h.length = 0;   // Reset history
+                        }
+                    }
+
+                    ewmas.set(sym, newEwma);
+                }
+            }
+        }
+
+        // Always update lastPrices at the end of the tick
+        for (const sym of symbols) {
+            lastPrices.set(sym, currentPrices.get(sym));
         }
 
         // Calculate current total portfolio value (cash + stocks)
@@ -119,8 +188,11 @@ export async function main(ns) {
         const cashReserve = portfolioVal * 0.20;
 
         // Calculate and execute trades, accumulating realized profits
-        const tickRealizedPL = executeTradingStrategy(ns, symbols, history, currentPrices, cashReserve, MIN_TRADE_VALUE, COMMISSION, BUY_THRESHOLD, SELL_THRESHOLD);
-        totalRealizedPL += tickRealizedPL;
+        const minHistoryReq = has4S ? 0 : MIN_HISTORY;
+        const skipBuyingThisTick = has4S ? false : marketFlipDetected;
+
+        const tickRealizedPL = executeTradingStrategy(ns, symbols, ewmas, history, cashReserve, MIN_TRADE_VALUE, COMMISSION, BUY_THRESHOLD, SELL_THRESHOLD, minHistoryReq, skipBuyingThisTick);
+        totalRealizedPL += flipRealizedPL + tickRealizedPL;
 
         // Calculate current unrealized (open) profit/loss of active positions
         let openPL = 0;
@@ -133,7 +205,7 @@ export async function main(ns) {
         const totalPL = totalRealizedPL + openPL;
 
         // Update dashboard UI
-        updateDashboard(ns, symbols, history, currentPrices, tickCount, cashReserve, portfolioVal, totalPL, WINDOW_SIZE);
+        updateDashboard(ns, symbols, ewmas, history, currentPrices, tickCount, cashReserve, portfolioVal, totalPL, WINDOW_SIZE);
     }
 }
 
@@ -141,22 +213,19 @@ export async function main(ns) {
  * Core trading logic execution on each market tick.
  * Returns the net profit/loss realized from any sales made on this tick.
  */
-function executeTradingStrategy(ns, symbols, history, currentPrices, cashReserve, minTradeValue, commission, buyThreshold, sellThreshold) {
+function executeTradingStrategy(ns, symbols, ewmas, history, cashReserve, minTradeValue, commission, buyThreshold, sellThreshold, minHistory, skipBuying) {
     let tickRealizedPL = 0;
 
     // 1. Identify which positions we currently hold, and if we should close them.
     for (const sym of symbols) {
         const [sharesLong, avgPriceLong] = ns.stock.getPosition(sym);
-        const forecast = estimateForecast(history.get(sym));
-
-        // Skip evaluation if we don't have enough history to make a confident estimate
-        if (history.get(sym).length < 10) {
-            continue;
-        }
+        const ewma = ewmas.get(sym);
 
         // Manage existing Long positions
+        // Note: We do NOT enforce minHistory when selling. If we hold a position,
+        // we evaluate sell signals immediately to exit as quickly as possible.
         if (sharesLong > 0) {
-            if (forecast <= sellThreshold) {
+            if (ewma <= sellThreshold) {
                 // Trend is weakening, liquidate Long position
                 const avgPrice = avgPriceLong;
                 const sellPrice = ns.stock.sellStock(sym, sharesLong);
@@ -165,13 +234,17 @@ function executeTradingStrategy(ns, symbols, history, currentPrices, cashReserve
                     // Net profit = shares * (sale_price - buy_price) - transaction fees (buy fee + sell fee = 2 * commission)
                     const tradePL = sharesLong * (sellPrice - avgPrice) - 2 * commission;
                     tickRealizedPL += tradePL;
-                    ns.print(`[SELL] Closed Long on ${sym}: ${sharesLong.toLocaleString()} shares. Forecast dropped to ${(forecast * 100).toFixed(0)}%. P/L: ${formatPL(tradePL)}`);
+                    ns.print(`[SELL] Closed Long on ${sym}: ${sharesLong.toLocaleString()} shares. EWMA: ${(ewma * 100).toFixed(1)}%. P/L: ${formatPL(tradePL)}`);
                 }
             }
         }
     }
 
     // 2. Identify new entry opportunities with remaining cash
+    if (skipBuying) {
+        return tickRealizedPL;
+    }
+
     if (ns.getServerMoneyAvailable("home") - cashReserve < minTradeValue) {
         return tickRealizedPL; // Insufficient cash to make any meaningful trade
     }
@@ -179,12 +252,13 @@ function executeTradingStrategy(ns, symbols, history, currentPrices, cashReserve
     // Rank all stocks with sufficient history by forecast strength
     const candidates = symbols
         .map(sym => {
-            const forecast = estimateForecast(history.get(sym));
-            return { sym, forecast, hLength: history.get(sym).length };
+            const ewma = ewmas.get(sym);
+            const hLength = history.get(sym).length;
+            return { sym, ewma, hLength };
         })
-        .filter(c => c.hLength >= 10)     // Require enough history for a confident estimate
-        .filter(c => c.forecast >= buyThreshold)
-        .sort((a, b) => b.forecast - a.forecast);
+        .filter(c => c.hLength >= minHistory)     // Require enough history for a confident estimate
+        .filter(c => c.ewma >= buyThreshold)
+        .sort((a, b) => b.ewma - a.ewma);
 
     // Execute Long Entries: buy ALL candidates above threshold (portfolio diversification)
     for (const candidate of candidates) {
@@ -205,22 +279,11 @@ function executeTradingStrategy(ns, symbols, history, currentPrices, cashReserve
 
         if (purchaseShares > 0 && tradeValue >= minTradeValue) {
             ns.stock.buyStock(candidate.sym, purchaseShares);
-            ns.print(`[BUY] Opened Long on ${candidate.sym}: ${purchaseShares.toLocaleString()} shares @ $${price.toFixed(2)} (Value: $${(tradeValue / 1e6).toFixed(1)}M). Forecast: ${(candidate.forecast * 100).toFixed(0)}%.`);
+            ns.print(`[BUY] Opened Long on ${candidate.sym}: ${purchaseShares.toLocaleString()} shares @ $${price.toFixed(2)} (Value: $${(tradeValue / 1e6).toFixed(1)}M). EWMA: ${(candidate.ewma * 100).toFixed(1)}%.`);
         }
     }
 
     return tickRealizedPL;
-}
-
-/**
- * Estimate forecast probability (0 to 1) based on historical tick movements.
- */
-function estimateForecast(historyArray) {
-    if (!historyArray || historyArray.length === 0) {
-        return 0.5; // Neutral default
-    }
-    const sum = historyArray.reduce((acc, val) => acc + val, 0);
-    return sum / historyArray.length;
 }
 
 /**
@@ -240,16 +303,21 @@ function calculateTotalPortfolioValue(ns, symbols) {
 /**
  * Generate a beautifully formatted tail dashboard.
  */
-function updateDashboard(ns, symbols, history, currentPrices, tickCount, cashReserve, portfolioVal, totalPL, windowSize) {
+function updateDashboard(ns, symbols, ewmas, history, currentPrices, tickCount, cashReserve, portfolioVal, totalPL, windowSize) {
     ns.clearLog();
 
     const cash = ns.getServerMoneyAvailable("home");
     const plPercent = portfolioVal > 0 ? (totalPL / portfolioVal) * 100 : 0;
 
     // Header styling
+    const has4S = ns.stock.has4SDataTixApi();
+    const title = has4S ? "FOUR SIGMA STOCK TRADER (4S)" : "PRIMITIVE STOCK TRADER (EWMA)";
+    const titlePadding = Math.floor((68 - title.length) / 2);
+    const titleStr = " ".repeat(titlePadding) + title + " ".repeat(68 - title.length - titlePadding);
+
     ns.print("╔══════════════════════════════════════════════════════════════════════╗");
-    ns.print("║                    PRIMITIVE STOCK TRADER (TIX)                      ║");
-    ns.print("╚═════════════════════════════════════════════════════════════════════╝");
+    ns.print(`║${titleStr}║`);
+    ns.print("╚══════════════════════════════════════════════════════════════════════╝");
     ns.print(` Ticks Active: ${tickCount.toString().padStart(6)}   | Window Size: ${windowSize} ticks`);
     ns.print(` Liquid Cash:  ${formatMoney(cash).padEnd(12)} | Reserve (20%): ${formatMoney(cashReserve).padEnd(12)}`);
     ns.print(` Portfolio:    ${formatMoney(portfolioVal).padEnd(12)} | Trader P/L:   ${formatPL(totalPL).padEnd(12)} (${totalPL >= 0 ? "+" : ""}${plPercent.toFixed(2)}%)`);
@@ -261,7 +329,7 @@ function updateDashboard(ns, symbols, history, currentPrices, tickCount, cashRes
     const stockRows = symbols.map(sym => {
         const price = currentPrices.get(sym);
         const h = history.get(sym);
-        const forecast = estimateForecast(h);
+        const forecast = ewmas.get(sym);
         const [sharesLong, avgPriceLong] = ns.stock.getPosition(sym);
 
         let posText = "None";

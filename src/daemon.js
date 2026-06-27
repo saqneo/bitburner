@@ -83,6 +83,7 @@ async function runEarly(ns) {
         // Infrastructure: Run periodically (every 1 minute)
         if (Date.now() > nextMaintenance) {
             await delegateInfrastructure(ns, hosts);
+            ns.exec("/util/start-stock-trader.js", "home", 1);
             if (targets.length > 0) {
                 ns.print(`Daemon: Top Targets: [${targets.slice(0, 3).join(", ")}]`);
             }

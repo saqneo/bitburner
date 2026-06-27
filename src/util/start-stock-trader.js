@@ -4,14 +4,37 @@ export async function main(ns) {
 
     // 1. Check WSE and TIX API ownership.
     // If they are missing, run the heavy transient purchase script to buy them if cash permits.
-    if (!ns.stock.hasWseAccount() || !ns.stock.hasTixApiAccess()) {
-        const cash = ns.getServerMoneyAvailable("home");
-        if (cash >= 200000000) { // At least enough cash for WSE Account
-            if (!ns.scriptRunning("/util/purchase-stock-api.js", "home")) {
-                ns.tprint("Daemon: [Stock Info] Starting transient purchase helper '/util/purchase-stock-api.js'...");
-                ns.exec("/util/purchase-stock-api.js", "home", 1);
-            }
-        } else {
+    const cash = ns.getServerMoneyAvailable("home");
+    const hasWse = ns.stock.hasWseAccount();
+    const hasTix = ns.stock.hasTixApiAccess();
+    const has4SData = hasTix && ns.stock.has4SData();
+    const has4SAPI = has4SData && ns.stock.has4SDataTixApi();
+
+    const needWse = !hasWse;
+    const needTix = hasWse && !hasTix;
+    const need4SData = hasTix && !has4SData;
+    const need4SAPI = has4SData && !has4SAPI;
+
+    const canAffordWse = cash >= 200000000;
+    const canAffordTix = cash >= 5000000000;
+    const canAfford4SData = cash >= 1000000000;
+    const canAfford4SAPI = cash >= 25000000000;
+
+    const shouldRunPurchaser = (needWse && canAffordWse) || 
+                               (needTix && canAffordTix) || 
+                               (need4SData && canAfford4SData) || 
+                               (need4SAPI && canAfford4SAPI);
+
+    if (shouldRunPurchaser) {
+        if (!ns.scriptRunning("/util/purchase-stock-api.js", "home")) {
+            ns.tprint("Daemon: [Stock Info] Starting transient purchase helper '/util/purchase-stock-api.js'...");
+            ns.exec("/util/purchase-stock-api.js", "home", 1);
+        }
+    }
+
+    // Exit early if basic APIs required to run the trader are missing
+    if (!hasWse || !hasTix) {
+        if (!canAffordWse && needWse) {
             ns.print("Daemon: [Stock Info] Automated stock trading is offline. WSE Account ($200m) is required.");
         }
         return;
