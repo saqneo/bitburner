@@ -73,6 +73,13 @@ export const SING_SCAN_INTERVAL_MS = 60000;
 export const SING_MIN_AUGS_TO_INSTALL = 20;
 
 /**
+ * Hard minimum of total augmentations (unique + NFG) installed per reset.
+ * Prevents wasting time resetting for small stat boosts.
+ * @type {number}
+ */
+export const SING_MIN_AUGS_PRESTIGE = 15;
+
+/**
  * Set to true to automatically install augmentations and reset.
  * Defaults to false for player safety.
  * @type {boolean}

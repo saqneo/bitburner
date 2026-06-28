@@ -1,4 +1,4 @@
-import { SING_TICK_MS, SING_SCAN_INTERVAL_MS, SING_MIN_AUGS_TO_INSTALL, SING_FOCUS_DELAY_MS, SING_AUTO_INSTALL, SING_STALL_TIMEOUT_MS } from '/lib/constants.js';
+import { SING_TICK_MS, SING_SCAN_INTERVAL_MS, SING_MIN_AUGS_TO_INSTALL, SING_MIN_AUGS_PRESTIGE, SING_FOCUS_DELAY_MS, SING_AUTO_INSTALL, SING_STALL_TIMEOUT_MS } from '/lib/constants.js';
 
 /** Hacking-only factions — these only support 'hacking' work type. */
 const HACKING_FACTIONS = new Set(["CyberSec", "NiteSec", "The Black Hand", "BitRunners", "Bachman & Associates"]);
@@ -488,7 +488,6 @@ function calculatePrestigePlan(ns, state, stallDurationMs = 0) {
     // This gate also controls whether NFG top-off is attempted below.
     const canPrestigeInitial = (uniqueCount >= threshold) || 
                                (!uniqueRemaining && uniqueCount > 0 && plan.length > 0) ||
-                               (!uniqueRemaining && plan.length >= 10) ||
                                donationUnlockAvailable ||
                                isStalling;
 
@@ -514,13 +513,20 @@ function calculatePrestigePlan(ns, state, stallDurationMs = 0) {
         }
 
         if (nfgAvailable) {
-            let baseNfgPrice = nfgPrice / multiplier;
+            let nfgRep = nfgRepReq;
+            const uniqueMultiplier = 1.9 ** planUnique;
+            let nfgPriceScaled = nfgPrice * uniqueMultiplier;
+            const faction = state.factions[nfgFaction];
+
             while (true) {
-                const actualPrice = baseNfgPrice * multiplier;
-                if (wallet >= actualPrice) {
-                    wallet -= actualPrice;
-                    multiplier *= 1.9;
+                if (faction.rep < nfgRep) {
+                    break;
+                }
+                if (wallet >= nfgPriceScaled) {
+                    wallet -= nfgPriceScaled;
                     plan.push({ name: "NeuroFlux Governor", faction: nfgFaction });
+                    nfgRep *= 1.14;
+                    nfgPriceScaled *= (1.14 * 1.9);
                 } else {
                     break;
                 }
@@ -528,19 +534,31 @@ function calculatePrestigePlan(ns, state, stallDurationMs = 0) {
         }
     }
 
-    // Recalculate canPrestige now that NFG levels may have been added
-    const canPrestige = (uniqueCount >= threshold) || 
-                        (!uniqueRemaining && uniqueCount > 0 && plan.length > 0) ||
-                        (!uniqueRemaining && plan.length >= 10) ||
-                        (donationUnlockAvailable && plan.length > 0) ||
-                        (isStalling && plan.length > 0);
+    // Recalculate canPrestige now that NFG levels may have been added.
+    // If the total number of augmentations we are installing/purchasing in this reset
+    // is less than 15 (SING_MIN_AUGS_PRESTIGE), we do not prestige to avoid useless soft resets.
+    const totalInstallCount = plan.length + state.pendingInstall.length;
+    const minPrestigeCount = SING_MIN_AUGS_PRESTIGE || 15;
+    let canPrestige = false;
+
+    if (totalInstallCount >= minPrestigeCount) {
+        if (uniqueCount > 0) {
+            canPrestige = (uniqueCount >= threshold) || 
+                          (!uniqueRemaining && plan.length > 0) ||
+                          (donationUnlockAvailable && plan.length > 0) ||
+                          (isStalling && plan.length > 0);
+        } else {
+            // NFG-only reset
+            canPrestige = true;
+        }
+    }
 
     // Determine the reason for prestige (for HUD/logging)
     let reason = "";
     if (canPrestige) {
         if (uniqueCount >= threshold) reason = "threshold";
-        else if (!uniqueRemaining && uniqueCount > 0) reason = "complete";
-        else if (!uniqueRemaining && plan.length >= 10) reason = "nfg-only";
+        else if (uniqueCount > 0 && !uniqueRemaining) reason = "complete";
+        else if (uniqueCount === 0) reason = "nfg-only";
         else if (donationUnlockAvailable) reason = "donation-unlock";
         else if (isStalling) reason = "stall";
     }

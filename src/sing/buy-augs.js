@@ -22,6 +22,36 @@ export async function main(ns) {
     }
 
     ns.tprint(`Singularity: Starting automated augmentation purchase of ${plan.augs.length} items...`);
+
+    // 1. Kill stock trader to prevent it from buying stocks during prestige
+    if (ns.scriptRunning("/util/stock-trader.js", "home")) {
+        ns.tprint("Singularity: Killing stock-trader.js...");
+        ns.kill("/util/stock-trader.js", "home");
+        await ns.sleep(500); // Wait for scripts to terminate cleanly
+    }
+
+    // 2. Liquidate all stocks to reclaim cash
+    try {
+        const symbols = ns.stock.getSymbols();
+        let liquidatedCount = 0;
+        let liquidatedValue = 0;
+        for (const sym of symbols) {
+            const [sharesLong] = ns.stock.getPosition(sym);
+            if (sharesLong > 0) {
+                const sellPrice = ns.stock.sellStock(sym, sharesLong);
+                if (sellPrice > 0) {
+                    liquidatedCount++;
+                    liquidatedValue += sharesLong * sellPrice;
+                }
+            }
+        }
+        if (liquidatedCount > 0) {
+            ns.tprint(`Singularity: Liquidated ${liquidatedCount} stock positions for $${ns.format.number(liquidatedValue)}`);
+        }
+    } catch (e) {
+        ns.print(`Could not liquidate stocks: ${e}`);
+    }
+
     let purchasedCount = 0;
 
     for (const item of plan.augs) {
